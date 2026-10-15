@@ -187,7 +187,7 @@ h2{margin:0;font-family:var(--font-display);font-weight:600;font-size:17px;lette
 <main class="app">
   <header class="head">
     <h1>Function Duel</h1>
-    <p class="lede">Pick a function for each ball. Every 3 seconds each ball stops, shakes, and fires its whole graph across the field, left and right. A curve that touches another ball takes off hit points. Last ball standing wins.</p>
+    <p class="lede">Pick a function for each ball. Each ball shakes and fires its whole graph across the field, left and right, every time its cooldown runs out. A curve that touches another ball takes off hit points. Last ball standing wins.</p>
   </header>
 
   <section class="stage" aria-label="Arena">
@@ -670,7 +670,7 @@ function finish(){
 /* ---------- simulation ---------- */
 function fire(p){
   beams.push({owner:p,pts:sampleBeam(p.fn,p.x,p.y,STEP,2*FIELD),age:0,lo:N,hi:N,alpha:1,hit:new Set()});
-  p.flash=0.3;p.freezeMax=Math.min(FREEZE,0.4*cooldownOf(p));p.freeze=p.freezeMax;
+  p.flash=0.3;p.freezeMax=Math.min(FREEZE,0.4*cooldownOf(p));p.freeze=p.freezeMax; // freeze is now only the shake timer
   sfxFire(p.slot);
 }
 function damage(att,vic){
@@ -702,9 +702,9 @@ function tickVisuals(dt){
   fx=fx.filter(function(f){return f.age<0.9;});
 }
 function move(p,dt){
-  // Straight line at this ball's current speed (set by its HP), bouncing off the walls. A firing ball stands still.
+  // Straight line at this ball's current speed (set by its HP), bouncing off the walls. Firing does not slow it down.
   const s=speedOf(p);
-  if(s<=0||p.freeze>0) return;
+  if(s<=0) return;
   p.x+=Math.cos(p.ang)*s*dt;p.y+=Math.sin(p.ang)*s*dt;
   const L=limOf(p);
   if(p.x<-L){p.x=-L;if(Math.cos(p.ang)<0) p.ang=Math.PI-p.ang;}
@@ -715,7 +715,7 @@ function move(p,dt){
 let lastBump=-1;
 function collide(list){
   // Balls are discs with mass proportional to their area. They push apart and bounce elastically.
-  // A ball that is frozen while firing counts as immovable. Each ball keeps its own speed (set by HP) afterwards.
+  // Each ball keeps its own speed (set by HP) afterwards, only its direction changes.
   for(let i=0;i<list.length;i++){
     for(let j=i+1;j<list.length;j++){
       const a=list[i],b=list[j],ra=radiusOf(a),rb=radiusOf(b),min=ra+rb;
@@ -723,18 +723,14 @@ function collide(list){
       if(d>=min) continue;
       if(d<1e-6){dx=1;dy=0;d=1;}
       const nx=dx/d,ny=dy/d,overlap=min-d;
-      const aFix=a.freeze>0,bFix=b.freeze>0;
-      let wa=aFix?0:1,wb=bFix?0:1;
-      if(wa+wb===0){wa=1;wb=1;}
-      const tw=wa+wb;
-      a.x-=nx*overlap*wa/tw;a.y-=ny*overlap*wa/tw;
-      b.x+=nx*overlap*wb/tw;b.y+=ny*overlap*wb/tw;
+      a.x-=nx*overlap/2;a.y-=ny*overlap/2;
+      b.x+=nx*overlap/2;b.y+=ny*overlap/2;
       [a,b].forEach(function(q){const L=limOf(q);q.x=clamp(q.x,-L,L);q.y=clamp(q.y,-L,L);});
-      const sa=aFix?0:speedOf(a),sb=bFix?0:speedOf(b);
-      const out=elastic(ra*ra,rb*rb,Math.cos(a.ang)*sa,Math.sin(a.ang)*sa,Math.cos(b.ang)*sb,Math.sin(b.ang)*sb,nx,ny,aFix,bFix);
+      const sa=speedOf(a),sb=speedOf(b);
+      const out=elastic(ra*ra,rb*rb,Math.cos(a.ang)*sa,Math.sin(a.ang)*sa,Math.cos(b.ang)*sb,Math.sin(b.ang)*sb,nx,ny,false,false);
       if(!out) continue;
-      if(!aFix&&Math.hypot(out[0],out[1])>1e-9) a.ang=Math.atan2(out[1],out[0]);
-      if(!bFix&&Math.hypot(out[2],out[3])>1e-9) b.ang=Math.atan2(out[3],out[2]);
+      if(Math.hypot(out[0],out[1])>1e-9) a.ang=Math.atan2(out[1],out[0]);
+      if(Math.hypot(out[2],out[3])>1e-9) b.ang=Math.atan2(out[3],out[2]);
       if(mode==='running'&&out[4]>0.6&&clock-lastBump>0.07){lastBump=clock;sfxBump(out[4]);}
     }
   }
