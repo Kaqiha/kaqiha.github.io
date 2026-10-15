@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Iron Crypt</title>
+
+<!-- ============================================================
+     CSS: page layout and the start / end overlay
+     ============================================================ -->
+<style>
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #08080c;
+    color: #cfd3d8;
+    font-family: "Courier New", monospace;
+  }
+
+  h1 {
+    margin: 0 0 10px;
+    letter-spacing: 6px;
+    color: #35c7d9;
+    text-shadow: 0 0 14px rgba(53, 199, 217, 0.55);
+  }
+
+  #wrap { position: relative; width: min(98vw, 960px); }
+
+  canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    border: 3px solid #2b3037;
+    border-radius: 6px;
+    background: #000;
+    image-rendering: pixelated;   /* keeps the retro chunky-pixel look when scaled up */
+    cursor: crosshair;
+  }
+
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    background: rgba(4, 6, 10, 0.84);
+    border-radius: 6px;
+  }
+  #overlay h2 { margin: 0 0 8px; font-size: 2rem; color: #e6e9ec; letter-spacing: 3px; }
+  #overlay p  { margin: 4px 0; color: #9aa3ad; line-height: 1.55; }
+  #overlay b  { color: #f2c14e; }
+
+  button {
+    margin-top: 18px;
+    padding: 12px 36px;
+    font-size: 1.1rem;
+    font-family: inherit;
+    color: #fff;
+    background: #0e6a78;
+    border: 2px solid #35c7d9;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.2s;
+  }
+  button:hover  { background: #128396; transform: scale(1.04); }
+
+  .hidden { display: none !important; }
+  .hint { margin-top: 10px; font-size: 0.8rem; color: #69717b; }
+</style>
+</head>
+
+<body>
+  <h1>IRON CRYPT</h1>
+
+  <!-- ============================================================
+       HTML: the canvas (the 3D view) and the overlay (menus)
+       ============================================================ -->
+  <div id="wrap">
+    <canvas id="view" width="640" height="400"></canvas>
+
+    <div id="overlay">
+      <h2 id="ovTitle">IRON CRYPT</h2>
+      <p id="ovText">Wraiths haunt the old crypt. Clear every one of them to escape.</p>
+      <p>
+        <b>W A S D</b> move &nbsp;|&nbsp; <b>Mouse</b> look (or <b>Left / Right arrows</b>, <b>Q / E</b>)<br>
+        <b>Click</b> or <b>Space</b> fire &nbsp;|&nbsp; <b>M</b> map &nbsp;|&nbsp; <b>P</b> pause<br>
+        Walk over crates for ammo and medkits.
+      </p>
+      <button id="startBtn">Enter the Crypt</button>
+      <p class="hint">Click the game to capture the mouse. Press Esc to release it.</p>
+    </div>
+  </div>
+
+<!-- ============================================================
+     JavaScript: the raycasting engine and game logic
+     ============================================================ -->
+<script>
+"use strict";
+
+// ================== Setup ==================
+const canvas = document.getElementById("view");
+const ctx = canvas.getContext("2d");
+const W = canvas.width;    // 640
+const H = canvas.height;   // 400
+
+const overlay  = document.getElementById("overlay");
+const ovTitle  = document.getElementById("ovTitle");
+const ovText   = document.getElementById("ovText");
+const startBtn = document.getElementById("startBtn");
+
+// ================== The map ==================
+// The world is a grid. 0 = empty floor, 1..4 = different wall types.
+const MW = 24, MH = 24;
+const map = [];
+for (let y = 0; y < MH; y++) {
+  map.push([]);
+  for (let x = 0; x < MW; x++) {
+    const border = (x === 0 || y === 0 || x === MW - 1 || y === MH - 1);
+    map[y].push(border ? 1 : 0);
+  }
+}
+function hline(y, x0, x1, t) { for (let x = x0; x <= x1; x++) map[y][x] = t; }
+function vline(x, y0, y1, t) { for (let y = y0; y <= y1; y++) map[y][x] = t; }
+function block(x0, y0, x1, y1, t) { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) map[y][x] = t; }
+function gap(x, y) { map[y][x] = 0; }
+
+// Top rooms
+vline(8, 1, 9, 2);   gap(8, 4);  gap(8, 5);
+vline(16, 1, 9, 3);  gap(16, 6); gap(16, 7);
+// Middle walls
+hline(10, 1, 6, 2);  hline(10, 10, 14, 2);  hline(10, 18, 22, 3);
+hline(13, 1, 6, 3);
+// Bottom rooms
+vline(8, 14, 22, 3);  gap(8, 18);  gap(8, 19);
+vline(16, 14, 22, 2); gap(16, 17); gap(16, 18);
+// Pillars
+block(11, 5, 12, 6, 4);   block(11, 17, 12, 18, 4);
+block(4, 16, 5, 17, 4);   block(19, 16, 20, 17, 4);
+
+// RGB colors for each wall type
+const WALL_COLORS = [
+  [150, 82, 66],    // 1: rusty brick
+  [78, 102, 128],   // 2: steel blue
+  [84, 120, 78],    // 3: mossy stone
+  [150, 126, 66]    // 4: brass
+];
+
+// Where enemies and pickups start (x, y in map cells)
+const ENEMY_SPAWNS = [
+  [6.5, 5.5], [12.5, 3.5], [19.5, 4.5], [20.5, 8.5], [3.5, 11.5], [12.5, 12.5],
+  [20.5, 12.5], [4.5, 20.5], [12.5, 20.5], [20.5, 20.5], [12.5, 15.5]
+];
+const PICKUP_SPAWNS = [
+  ["ammo", 5.5, 8.5], ["ammo", 14.5, 8.5], ["ammo", 11.5, 11.5], ["ammo", 3.5, 19.5], ["ammo", 18.5, 19.5],
+  ["med", 22.5, 2.5], ["med", 1.5, 11.5], ["med", 14.5, 21.5], ["med", 21.5, 14.5], ["med", 9.5, 6.5]
+];
+
+// ================== Game state ==================
+let state = "menu";            // "menu" | "playing" | "dead" | "won"
+let paused = false;
+let showMap = true;
+let P, enemies, pickups, kills, elapsed, winTimer, bobT, moving = false;
+const zBuf = new Float32Array(W);    // distance to the wall in each screen column (used for sprites)
+
+function resetGame() {
+  // The player: position, facing direction, and the camera plane.
+  // dir = where you look; plane = the width of your field of view (perpendicular to dir).
+  P = {
+    x: 2.5, y: 2.5,
+    dirX: 1, dirY: 0,
+    planeX: 0, planeY: 0.66,
+    health: 100, ammo: 30,
+    cool: 0, flash: 0, recoil: 0, hurtFlash: 0, pickFlash: 0
+  };
+  enemies = ENEMY_SPAWNS.map(([x, y]) => ({
+    x, y, hp: 3, alive: true, aggro: false, hurt: 0, stun: 0, atk: 0.4,
+    speed: 1.3 + Math.random() * 0.5
+  }));
+  pickups = PICKUP_SPAWNS.map(([type, x, y]) => ({ type, x, y, taken: false }));
+  kills = 0; elapsed = 0; winTimer = 0; bobT = 0;
+}
+resetGame();
+
+// ================== Input ==================
+const keys = {};
+let mouseDown = false;
+
+window.addEventListener("keydown", e => {
+  keys[e.code] = true;
+  if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
+  if (e.code === "KeyM") showMap = !showMap;
+  if (e.code === "KeyP" && state === "playing") paused = !paused;
+});
+window.addEventListener("keyup", e => { keys[e.code] = false; });
+window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; mouseDown = false; });
+
+canvas.addEventListener("mousedown", () => {
+  if (state !== "playing") return;
+  mouseDown = true;
+  if (!document.pointerLockElement) requestLock();
+});
+window.addEventListener("mouseup", () => { mouseDown = false; });
+
+// Mouse look works while the pointer is "locked" to the canvas
+document.addEventListener("mousemove", e => {
+  if (document.pointerLockElement === canvas && state === "playing" && !paused) {
+    rotate(e.movementX * 0.0025);
+  }
+});
+
+function requestLock() {
+  try {
+    const r = canvas.requestPointerLock();
+    if (r && r.catch) r.catch(() => {});
+  } catch (e) {}
+}
+
+startBtn.addEventListener("click", () => {
+  initAudio();
+  resetGame();
+  state = "playing";
+  paused = false;
+  overlay.classList.add("hidden");
+  requestLock();
+});
+
+// ================== Sound (tiny synthesized beeps, no files needed) ==================
+let actx = null;
+function initAudio() {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+  } catch (e) {}
+}
+function tone(freq, endFreq, dur, type, vol) {
+  if (!actx) return;
+  try {
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(endFreq, 20), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(t + dur);
+  } catch (e) {}
+}
+const sfxShot   = () => tone(520, 90, 0.14, "square", 0.08);
+const sfxHit    = () => tone(180, 70, 0.1, "sawtooth", 0.1);
+const sfxDie    = () => tone(240, 40, 0.35, "sawtooth", 0.12);
+const sfxHurt   = () => tone(110, 45, 0.22, "sawtooth", 0.14);
+const sfxPickup = () => { tone(500, 900, 0.1, "triangle", 0.1); };
+const sfxEmpty  = () => tone(140, 100, 0.05, "square", 0.05);
+
+// ================== Math / movement helpers ==================
+// Turning = rotating both the direction vector and the camera plane
+function rotate(a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  let t = P.dirX;
+  P.dirX = P.dirX * c - P.dirY * s;
+  P.dirY = t * s + P.dirY * c;
+  t = P.planeX;
+  P.planeX = P.planeX * c - P.planeY * s;
+  P.planeY = t * s + P.planeY * c;
+}
+
+// Is a circle of radius r at (x, y) touching a wall?
+function blocked(x, y, r) {
+  return map[Math.floor(y - r)][Math.floor(x - r)] > 0 ||
+         map[Math.floor(y - r)][Math.floor(x + r)] > 0 ||
+         map[Math.floor(y + r)][Math.floor(x - r)] > 0 ||
+         map[Math.floor(y + r)][Math.floor(x + r)] > 0;
+}
+// Move one axis at a time so you slide along walls instead of sticking to them
+function moveEntity(o, dx, dy, r) {
+  if (!blocked(o.x + dx, o.y, r)) o.x += dx;
+  if (!blocked(o.x, o.y + dy, r)) o.y += dy;
+}
+
+// Can point A see point B without a wall in between?
+function hasLOS(x0, y0, x1, y1) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const steps = Math.ceil(Math.hypot(dx, dy) / 0.15);
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    if (map[Math.floor(y0 + dy * t)][Math.floor(x0 + dx * t)] > 0) return false;
+  }
+  return true;
+}
+
+// ================== Sprites (drawn once with canvas code) ==================
+function makeCanvas(w, h, fn) {
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  fn(c.getContext("2d"));
+  return c;
+}
+
+// A hooded wraith with glowing eyes
+const wraithImg = makeCanvas(64, 64, c => {
+  c.fillStyle = "#16241d";
+  c.beginPath(); c.moveTo(8, 64); c.quadraticCurveTo(6, 24, 32, 6); c.quadraticCurveTo(58, 24, 56, 64); c.closePath(); c.fill();
+  c.fillStyle = "#2c4a3b";
+  c.beginPath(); c.moveTo(18, 64); c.quadraticCurveTo(16, 30, 32, 14); c.quadraticCurveTo(48, 30, 46, 64); c.closePath(); c.fill();
+  c.fillStyle = "#070b09";
+  c.beginPath(); c.ellipse(32, 25, 10, 12, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = "#ffae2e";
+  c.fillRect(25, 21, 5, 5); c.fillRect(35, 21, 5, 5);
+  c.fillStyle = "#fff2c4";
+  c.fillRect(26, 22, 2, 2); c.fillRect(36, 22, 2, 2);
+  // claws
+  c.strokeStyle = "#a9c2b2"; c.lineWidth = 2.5; c.lineCap = "round";
+  for (const sx of [-1, 1]) {
+    const bx = 32 + sx * 22;
+    c.beginPath(); c.moveTo(bx, 40); c.lineTo(bx + sx * 6, 54); c.stroke();
+    c.beginPath(); c.moveTo(bx, 40); c.lineTo(bx + sx * 1, 56); c.stroke();
+    c.beginPath(); c.moveTo(bx, 40); c.lineTo(bx - sx * 4, 54); c.stroke();
+  }
+});
+// Same sprite tinted red (shown briefly when hit)
+const wraithHurt = makeCanvas(64, 64, c => {
+  c.drawImage(wraithImg, 0, 0);
+  c.globalCompositeOperation = "source-atop";
+  c.fillStyle = "rgba(255, 90, 70, 0.65)";
+  c.fillRect(0, 0, 64, 64);
+});
+// A heap of cloth left behind when a wraith dies
+const wraithDead = makeCanvas(64, 64, c => {
+  c.fillStyle = "#16241d";
+  c.beginPath(); c.ellipse(32, 58, 26, 6, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = "#2c4a3b";
+  c.beginPath(); c.ellipse(30, 56, 16, 4, 0, 0, Math.PI * 2); c.fill();
+});
+const ammoImg = makeCanvas(32, 32, c => {
+  c.fillStyle = "#5a4a1e"; c.fillRect(3, 12, 26, 18);
+  c.fillStyle = "#c9a43a"; c.fillRect(3, 12, 26, 5);
+  c.fillStyle = "#2a220c"; c.fillRect(13, 18, 6, 12);
+  c.fillStyle = "#35c7d9"; c.fillRect(8, 21, 4, 4); c.fillRect(20, 21, 4, 4);
+});
+const medImg = makeCanvas(32, 32, c => {
+  c.fillStyle = "#e8eaec"; c.fillRect(3, 12, 26, 18);
+  c.fillStyle = "#b9bec4"; c.fillRect(3, 26, 26, 4);
+  c.fillStyle = "#d62b3a"; c.fillRect(13, 15, 6, 12); c.fillRect(10, 18, 12, 6);
+});
+
+// ================== Rendering ==================
+function renderWorld() {
+  // Ceiling and floor
+  let g = ctx.createLinearGradient(0, 0, 0, H / 2);
+  g.addColorStop(0, "#0b0b12"); g.addColorStop(1, "#262632");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H / 2);
+  g = ctx.createLinearGradient(0, H / 2, 0, H);
+  g.addColorStop(0, "#16120e"); g.addColorStop(1, "#3a322a");
+  ctx.fillStyle = g; ctx.fillRect(0, H / 2, W, H / 2);
+
+  // Cast one ray for every column of pixels on screen.
+  for (let x = 0; x < W; x++) {
+    const cameraX = 2 * x / W - 1;                  // -1 (left edge) to +1 (right edge)
+    const rdx = P.dirX + P.planeX * cameraX;        // ray direction
+    const rdy = P.dirY + P.planeY * cameraX;
+
+    let mx = Math.floor(P.x), my = Math.floor(P.y); // which map cell the ray is in
+    const ddx = Math.abs(1 / rdx), ddy = Math.abs(1 / rdy);
+    let stepX, stepY, sdx, sdy;
+    if (rdx < 0) { stepX = -1; sdx = (P.x - mx) * ddx; } else { stepX = 1; sdx = (mx + 1 - P.x) * ddx; }
+    if (rdy < 0) { stepY = -1; sdy = (P.y - my) * ddy; } else { stepY = 1; sdy = (my + 1 - P.y) * ddy; }
+
+    // DDA: hop from one grid line to the next until we hit a wall
+    let side = 0, hit = 0;
+    while (!hit) {
+      if (sdx < sdy) { sdx += ddx; mx += stepX; side = 0; }
+      else           { sdy += ddy; my += stepY; side = 1; }
+      if (mx < 0 || my < 0 || mx >= MW || my >= MH) { hit = 1; break; }
+      if (map[my][mx] > 0) hit = map[my][mx];
+    }
+
+    // Distance to the wall (perpendicular, which avoids the fisheye effect)
+    const perp = side === 0 ? sdx - ddx : sdy - ddy;
+    zBuf[x] = perp;
+
+    // Where along the wall did the ray hit? (used for the brick grooves)
+    let wallX = side === 0 ? P.y + perp * rdy : P.x + perp * rdx;
+    wallX -= Math.floor(wallX);
+
+    // Closer walls are taller
+    const lineH = Math.floor(H / perp);
+    const top = Math.floor(H / 2 - lineH / 2);
+
+    // Shade by distance, and make walls facing one way darker for depth
+    const base = WALL_COLORS[hit - 1];
+    let shade = Math.max(0.12, 1 - perp / 16) * (side ? 0.7 : 1);
+    if ((wallX * 6) % 1 < 0.05) shade *= 0.7;   // vertical mortar groove
+    ctx.fillStyle = "rgb(" + (base[0] * shade | 0) + "," + (base[1] * shade | 0) + "," + (base[2] * shade | 0) + ")";
+    ctx.fillRect(x, top, 1, lineH);
+
+    // Horizontal brick lines
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    const lh = Math.max(1, lineH / 55);
+    for (let k = 1; k <= 3; k++) ctx.fillRect(x, top + lineH * k / 4, 1, lh);
+  }
+}
+
+function renderSprites() {
+  // Build a list of everything that is drawn as a flat image
+  const list = [];
+  for (const e of enemies) {
+    list.push({ x: e.x, y: e.y, scale: 0.85,
+      img: !e.alive ? wraithDead : (e.hurt > 0 ? wraithHurt : wraithImg) });
+  }
+  for (const p of pickups) {
+    if (!p.taken) list.push({ x: p.x, y: p.y, scale: 0.35, img: p.type === "ammo" ? ammoImg : medImg });
+  }
+  // Draw the farthest first so closer ones cover them
+  for (const s of list) s.d2 = (s.x - P.x) ** 2 + (s.y - P.y) ** 2;
+  list.sort((a, b) => b.d2 - a.d2);
+
+  const invDet = 1 / (P.planeX * P.dirY - P.dirX * P.planeY);
+  for (const s of list) {
+    // Convert the world position into camera space
+    const sx = s.x - P.x, sy = s.y - P.y;
+    const tx = invDet * (P.dirY * sx - P.dirX * sy);        // sideways
+    const ty = invDet * (-P.planeY * sx + P.planeX * sy);   // depth
+    if (ty <= 0.15) continue;                                // behind you
+
+    const screenX = (W / 2) * (1 + tx / ty);
+    const full = Math.abs(H / ty);
+    const sh = full * s.scale, sw = sh;
+    const floorY = H / 2 + full / 2;
+    const y0 = floorY - sh;
+    const x0 = Math.floor(screenX - sw / 2), x1 = Math.floor(screenX + sw / 2);
+
+    // Darken with distance (the filter is ignored by browsers that don't support it)
+    ctx.filter = "brightness(" + Math.max(0.25, 1 - ty / 16).toFixed(2) + ")";
+    for (let x = Math.max(0, x0); x < Math.min(W, x1); x++) {
+      if (ty >= zBuf[x]) continue;                           // hidden behind a wall
+      const tex = Math.floor((x - x0) / sw * s.img.width);
+      ctx.drawImage(s.img, tex, 0, 1, s.img.height, x, y0, 1, sh);
+    }
+    ctx.filter = "none";
+  }
+}
+
+function drawWeapon() {
+  const bx = W / 2 + (moving ? Math.sin(bobT * 0.5) * 8 : 0);
+  const by = H + (moving ? Math.abs(Math.cos(bobT * 0.5)) * 6 : 0) + P.recoil * 18;
+  ctx.fillStyle = "#3b434c"; ctx.fillRect(bx - 9, by - 120, 18, 95);     // barrel
+  ctx.fillStyle = "#6f7d8b"; ctx.fillRect(bx - 9, by - 120, 5, 95);      // highlight
+  ctx.fillStyle = "#252a30"; ctx.fillRect(bx - 22, by - 50, 44, 50);     // body
+  ctx.fillStyle = "#4a5560"; ctx.fillRect(bx - 22, by - 50, 44, 8);
+  ctx.fillStyle = "#35c7d9"; ctx.fillRect(bx - 3, by - 100, 6, 30);      // energy cell
+  ctx.fillStyle = "#c9a27a"; ctx.fillRect(bx - 26, by - 22, 52, 22);     // hand
+  if (P.flash > 0) {
+    const g = ctx.createRadialGradient(bx, by - 128, 2, bx, by - 128, 40);
+    g.addColorStop(0, "rgba(255,255,220,0.95)");
+    g.addColorStop(0.4, "rgba(80,220,255,0.7)");
+    g.addColorStop(1, "rgba(80,220,255,0)");
+    ctx.fillStyle = g; ctx.fillRect(bx - 45, by - 175, 90, 90);
+  }
+}
+
+function drawText(txt, x, y, color, align) {
+  ctx.textAlign = align || "left";
+  ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.strokeText(txt, x, y);
+  ctx.fillStyle = color; ctx.fillText(txt, x, y);
+}
+
+function drawHUD() {
+  // Crosshair
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.fillRect(W / 2 - 1, H / 2 - 8, 2, 5); ctx.fillRect(W / 2 - 1, H / 2 + 3, 2, 5);
+  ctx.fillRect(W / 2 - 8, H / 2 - 1, 5, 2); ctx.fillRect(W / 2 + 3, H / 2 - 1, 5, 2);
+
+  ctx.font = "bold 18px 'Courier New', monospace";
+  const hp = Math.max(0, Math.ceil(P.health));
+  drawText("HEALTH " + hp, 12, H - 14, hp > 50 ? "#7be27b" : hp > 25 ? "#f2c14e" : "#ff5a5a");
+  drawText("AMMO " + P.ammo, W - 12, H - 14, P.ammo > 5 ? "#35c7d9" : "#ff5a5a", "right");
+  const left = enemies.filter(e => e.alive).length;
+  drawText("WRAITHS LEFT: " + left, 12, 24, "#e6e9ec");
+
+  // Minimap (toggle with M)
+  if (showMap) {
+    const s = 4, ox = W - MW * s - 10, oy = 10;
+    ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(ox - 3, oy - 3, MW * s + 6, MH * s + 6);
+    for (let y = 0; y < MH; y++) {
+      for (let x = 0; x < MW; x++) {
+        if (map[y][x] > 0) {
+          const c = WALL_COLORS[map[y][x] - 1];
+          ctx.fillStyle = "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
+          ctx.fillRect(ox + x * s, oy + y * s, s, s);
+        }
+      }
+    }
+    ctx.fillStyle = "#ff4a4a";
+    for (const e of enemies) if (e.alive) ctx.fillRect(ox + e.x * s - 1, oy + e.y * s - 1, 3, 3);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(ox + P.x * s - 1.5, oy + P.y * s - 1.5, 3, 3);
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ox + P.x * s, oy + P.y * s);
+    ctx.lineTo(ox + (P.x + P.dirX * 1.6) * s, oy + (P.y + P.dirY * 1.6) * s); ctx.stroke();
+  }
+
+  // Screen flashes
+  if (P.hurtFlash > 0) { ctx.fillStyle = "rgba(200,0,0," + Math.min(0.5, P.hurtFlash) + ")"; ctx.fillRect(0, 0, W, H); }
+  if (P.pickFlash > 0) { ctx.fillStyle = "rgba(240,220,120," + Math.min(0.25, P.pickFlash) + ")"; ctx.fillRect(0, 0, W, H); }
+}
+
+// ================== Game logic ==================
+function shoot() {
+  if (P.cool > 0 || state !== "playing") return;
+  if (P.ammo <= 0) { P.cool = 0.25; sfxEmpty(); return; }
+  P.ammo--; P.cool = 0.36; P.flash = 0.1; P.recoil = 1;
+  sfxShot();
+
+  // Hitscan: find the nearest living enemy that is right in front of the crosshair
+  // and not hidden behind a wall (zBuf[W/2] is the wall distance at the screen centre)
+  let best = null, bestF = zBuf[W >> 1];
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    const sx = e.x - P.x, sy = e.y - P.y;
+    const forward = sx * P.dirX + sy * P.dirY;       // how far ahead
+    const side = -sx * P.dirY + sy * P.dirX;         // how far left/right of the crosshair
+    if (forward > 0.2 && forward < bestF && Math.abs(side) < 0.32) { best = e; bestF = forward; }
+  }
+  if (best) {
+    best.hp--; best.hurt = 0.18; best.stun = 0.3; best.aggro = true;
+    if (best.hp <= 0) { best.alive = false; kills++; sfxDie(); } else sfxHit();
+  }
+}
+
+function hurtPlayer(n) {
+  P.health -= n;
+  P.hurtFlash = 0.4;
+  sfxHurt();
+  if (P.health <= 0) endGame(false);
+}
+
+function endGame(won) {
+  state = won ? "won" : "dead";
+  mouseDown = false;
+  if (document.exitPointerLock) document.exitPointerLock();
+  const secs = Math.round(elapsed);
+  ovTitle.textContent = won ? "CRYPT CLEARED" : "YOU HAVE FALLEN";
+  ovText.textContent = (won ? "Every wraith is gone. " : "The crypt claims another soul. ") +
+    "Wraiths slain: " + kills + " / " + ENEMY_SPAWNS.length + "   |   Time: " + secs + "s";
+  startBtn.textContent = won ? "Play Again" : "Try Again";
+  overlay.classList.remove("hidden");
+}
+
+function update(dt) {
+  elapsed += dt;
+
+  // --- Turning (keyboard) ---
+  if (keys.ArrowLeft || keys.KeyQ)  rotate(-2.2 * dt);
+  if (keys.ArrowRight || keys.KeyE) rotate(2.2 * dt);
+
+  // --- Moving ---
+  let mvx = 0, mvy = 0;
+  if (keys.KeyW || keys.ArrowUp)   { mvx += P.dirX; mvy += P.dirY; }
+  if (keys.KeyS || keys.ArrowDown) { mvx -= P.dirX; mvy -= P.dirY; }
+  const rx = P.planeX / 0.66, ry = P.planeY / 0.66;    // unit vector pointing to your right
+  if (keys.KeyD) { mvx += rx; mvy += ry; }
+  if (keys.KeyA) { mvx -= rx; mvy -= ry; }
+  const len = Math.hypot(mvx, mvy);
+  moving = len > 0;
+  if (moving) {
+    const sp = 3.2 * dt;
+    moveEntity(P, mvx / len * sp, mvy / len * sp, 0.25);
+    bobT += dt * 10;
+  }
+
+  // --- Weapon ---
+  P.cool = Math.max(0, P.cool - dt);
+  P.flash = Math.max(0, P.flash - dt);
+  P.recoil = Math.max(0, P.recoil - dt * 6);
+  P.hurtFlash = Math.max(0, P.hurtFlash - dt);
+  P.pickFlash = Math.max(0, P.pickFlash - dt);
+  if (mouseDown || keys.Space || keys.ControlLeft || keys.ControlRight) shoot();
+
+  // --- Pickups ---
+  for (const p of pickups) {
+    if (p.taken) continue;
+    if (Math.hypot(p.x - P.x, p.y - P.y) < 0.6) {
+      if (p.type === "ammo" && P.ammo < 99) { P.ammo = Math.min(99, P.ammo + 12); p.taken = true; }
+      if (p.type === "med" && P.health < 100) { P.health = Math.min(100, P.health + 30); p.taken = true; }
+      if (p.taken) { P.pickFlash = 0.3; sfxPickup(); }
+    }
+  }
+
+  // --- Enemies ---
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    e.hurt = Math.max(0, e.hurt - dt);
+    e.stun = Math.max(0, e.stun - dt);
+    e.atk -= dt;
+
+    const dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy);
+    if (!e.aggro && d < 10 && hasLOS(e.x, e.y, P.x, P.y)) e.aggro = true;   // spotted you
+
+    if (e.aggro && e.stun <= 0) {
+      if (d > 0.8) {
+        const sp = e.speed * dt;
+        moveEntity(e, dx / d * sp, dy / d * sp, 0.3);
+      } else if (e.atk <= 0) {
+        e.atk = 0.9;
+        hurtPlayer(9);
+        if (state !== "playing") return;
+      }
+    }
+
+    // Keep wraiths from stacking exactly on top of each other
+    for (const o of enemies) {
+      if (o === e || !o.alive) continue;
+      const ox = e.x - o.x, oy = e.y - o.y, od = Math.hypot(ox, oy);
+      if (od > 0 && od < 0.5) moveEntity(e, ox / od * 0.6 * dt, oy / od * 0.6 * dt, 0.3);
+    }
+  }
+
+  // --- Win check ---
+  if (!enemies.some(e => e.alive)) {
+    winTimer += dt;
+    if (winTimer > 0.8) endGame(true);
+  }
+}
+
+// ================== Main loop ==================
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+
+  if (state === "playing") {
+    if (!paused) update(dt);
+  } else if (state === "menu") {
+    rotate(0.25 * dt);    // slowly look around behind the menu
+  }
+
+  renderWorld();
+  renderSprites();
+  if (state === "playing") {
+    drawWeapon();
+    drawHUD();
+    if (paused) {
+      ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(0, 0, W, H);
+      ctx.font = "bold 36px 'Courier New', monospace";
+      drawText("PAUSED", W / 2, H / 2, "#e6e9ec", "center");
+      ctx.font = "16px 'Courier New', monospace";
+      drawText("Press P to continue", W / 2, H / 2 + 28, "#9aa3ad", "center");
+    }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
