@@ -1,0 +1,368 @@
+&lt;!DOCTYPE html&gt;
+
+
+
+<canvas id="game"></canvas>
+<div id="menu" class="panel">
+<h1>PIXEL FRONTIER</h1>
+<small>A compact, original survival sandbox · desktop controls</small>
+<label>World seed</label><input id="seed" value="Moonlit valley">
+<label>World size</label>
+<select id="size"><option value="320">Small</option>
+<option value="640">Medium</option><option value="960">Large</option></select>
+<label>World evil</label>
+<select id="evil"><option>Corruption</option><option>Crimson</option></select>
+<button id="new">Create world</button><button id="load">Load save</button>
+<small>Explore caves for iron, harvest trees for wood, build a workbench
+and furnace, then craft weapons and boss summons.</small>
+</div>
+<div id="hud"></div><div id="craft" class="panel"></div>
+<div id="notice"></div>
+<div id="help">A/D move · Space jump · Left click use · Right click place selected block ·
+1–6 hotbar · E crafting · H heal · F save · Esc pause</div>
+<script>
+"use strict";
+const $=id=&gt;document.getElementById(id);
+const canvas=$("game"),ctx=canvas.getContext("2d");
+let vw,vh;
+function resize(){
+  vw=canvas.width=Math.ceil(innerWidth/2);
+  vh=canvas.height=Math.ceil(innerHeight/2);
+  ctx.imageSmoothingEnabled=false;
+}
+onresize=resize;resize();
+const T=12,H=160;
+const names=["Air","Dirt","Stone","Grass","Wood","Leaves","Iron","Evil grass","Torch"];
+const colors=["","#845637","#737b89","#50ac49","#98613c","#367d46","#b09881","#883f99","#ffc75b"];
+let world,W,surface,p,inv,enemies=[],boss=null,time=0,cam={x:0,y:0},
+running=false,paused=false,selected=0,evil="Corruption",seedText="",defeated={},
+attack=0,spawnClock=0,healCD=0,saveClock=0,noticeTimer=0;
+let mouse={x:0,y:0,left:false,right:false},keys={},rng;
+const slots=["Pickaxe","Sword","Bow","Dirt","Wood","Torch"];
+const recipes=[
+["Workbench",{Wood:10}],
+["Furnace",{Stone:20,Wood:5},"Workbench"],
+["Iron bar",{Iron:3},"Furnace"],
+["Iron sword",{"Iron bar":8,Wood:4},"Workbench"],
+["Iron armor",{"Iron bar":12},"Workbench"],
+["Bow",{Wood:12},"Workbench"],
+["Arrows",{Wood:1,Stone:1},null,20],
+["Torch",{Wood:1,Gel:1},null,4],
+["Potion",{Gel:3,Wood:2}],
+["Slime crown",{Gel:15,"Iron bar":3},"Workbench"],
+["Suspicious eye",{Lens:4,"Iron bar":3},"Workbench"]
+];
+function hash(s){let n=2166136261;for(const c of s)n=Math.imul(n^c.charCodeAt(0),16777619);return n&gt;&gt;&gt;0}
+function randomSeed(n){return()=&gt;{n|=0;n=n+0x6D2B79F5|0;let t=Math.imul(n^n&gt;&gt;&gt;15,1|n);t^=t+Math.imul(t^t&gt;&gt;&gt;7,61|t);return((t^t&gt;&gt;&gt;14)&gt;&gt;&gt;0)/4294967296}}
+function tile(x,y){x=Math.floor(x);y=Math.floor(y);return x&lt;0||x&gt;=W||y&gt;=H?2:y&lt;0?0:world[y*W+x]}
+function set(x,y,v){if(x&gt;=0&&x&lt;W&&y&gt;=0&&y&lt;H)world[y*W+x]=v}
+function solid(v){return v!==0&&v!==5&&v!==8}
+function add(n,v=1){inv[n]=(inv[n]||0)+v}
+function say(s){$("notice").textContent=s;noticeTimer=4}
+function generate(){
+ W=+$("size").value;evil=$("evil").value;seedText=$("seed").value;
+ rng=randomSeed(hash(seedText));world=new Uint8Array(W*H);surface=[];
+ let ground=43;
+ for(let x=0;x&lt;W;x++){
+  ground=Math.max(32,Math.min(55,ground+(rng()&lt;.45?Math.floor(rng()*3)-1:0)));
+  surface[x]=ground;
+  for(let y=ground;y&lt;H;y++){
+   let v=y===ground?(x&gt;W*.7?7:3):y&lt;ground+7?1:2;
+   if(y&gt;ground+8&&rng()&lt;.055)v=6;
+   set(x,y,v);
+  }
+ }
+ for(let i=0;i&lt;W/3;i++){
+  let x=Math.floor(rng()*W),y=62+rng()*85;
+  for(let j=0;j&lt;25;j++){
+   let r=2+rng()*3;
+   for(let xx=Math.floor(x-r);xx&lt;=x+r;xx++)
+    for(let yy=Math.floor(y-r);yy&lt;=y+r;yy++)
+     if((xx-x)**2+(yy-y)**2&lt;r*r&&yy&lt;H-3)set(xx,yy,0);
+   x+=rng()*6-3;y+=rng()*4-2;
+  }
+ }
+ for(let x=5;x&lt;W-5;x+=4+Math.floor(rng()*7)){
+  let y=surface[x],height=4+Math.floor(rng()*4);
+  for(let j=1;j&lt;=height;j++)set(x,y-j,4);
+  for(let dx=-2;dx&lt;=2;dx++)for(let dy=-2;dy&lt;=1;dy++)
+   if(Math.abs(dx)+Math.abs(dy)&lt;4&&tile(x+dx,y-height+dy)===0)set(x+dx,y-height+dy,5);
+ }
+ let sx=Math.floor(W*.3);
+ for(let x=sx-2;x&lt;=sx+2;x++)for(let y=surface[sx]-5;y&lt;surface[sx];y++)set(x,y,0);
+ p={x:sx*T,y:(surface[sx]-3)*T,w:9,h:21,vx:0,vy:0,hp:100,max:100,
+ ground:false,ifr:0,face:1,spawnX:sx*T,spawnY:(surface[sx]-3)*T};
+ inv={Wood:0,Dirt:0,Stone:0,Torch:8,Potion:3,Arrows:30};
+ enemies=[];boss=null;defeated={};time=60;start();
+}
+function start(){running=true;paused=false;attack=0;spawnClock=0;
+$("menu").style.display="none";$("craft").style.display="none";say("Harvest wood, explore caves, and craft your first equipment.");}
+$("new").onclick=generate;
+function save(){
+ try{localStorage.setItem("pixel-frontier",JSON.stringify({
+ W,world:Array.from(world),surface,p,inv,time,evil,seedText,defeated}));
+ say("World saved locally.");}catch(e){say("Save failed: browser storage unavailable or full.");}
+}
+$("load").onclick=()=&gt;{
+ try{let d=JSON.parse(localStorage.getItem("pixel-frontier"));
+ if(!d)throw Error();
+ ({W,surface,p,inv,time,evil,seedText,defeated}=d);
+ world=Uint8Array.from(d.world);enemies=[];boss=null;start();
+ }catch(e){say("No valid save found.");}
+};
+function overlap(a,b){return a.x&lt;b.x+b.w&&a.x+a.w&gt;b.x&&a.y&lt;b.y+b.h&&a.y+a.h&gt;b.y}
+function blocked(a){
+ for(let x=Math.floor(a.x/T);x&lt;=Math.floor((a.x+a.w-.01)/T);x++)
+ for(let y=Math.floor(a.y/T);y&lt;=Math.floor((a.y+a.h-.01)/T);y++)
+ if(solid(tile(x,y)))return true;
+ return false;
+}
+function move(a,dt){
+ a.ground=false;
+ for(const axis of ["x","y"]){
+  let delta=(axis==="x"?a.vx:a.vy)*dt;
+  let steps=Math.max(1,Math.ceil(Math.abs(delta)/3)),step=delta/steps;
+  for(let i=0;i&lt;steps;i++){
+   a[axis]+=step;
+   if(blocked(a)){a[axis]-=step;if(axis==="y"){a.ground=step&gt;0;a.vy=0}else a.vx=0;break}
+  }
+ }
+}
+function hurt(d){
+ if(p.ifr&gt;0)return;
+ p.hp-=Math.max(1,d-(inv["Iron armor"]?5:0));p.ifr=1;
+ if(p.hp&lt;=0){p.x=p.spawnX;p.y=p.spawnY;p.hp=p.max;p.vy=0;
+ enemies=[];boss=null;say("You fell. Your inventory was retained.");}
+}
+function createEnemy(type,x,y){
+ return {type,x,y,w:type==="eye"?17:18,h:type==="eye"?14:13,
+ vx:0,vy:0,hp:type==="eye"?35:25,max:type==="eye"?35:25,t:Math.random()*2,hit:0};
+}
+function summon(type){
+ if(boss){say("A boss is already present.");return}
+ let item=type==="king"?"Slime crown":"Suspicious eye";
+ if(!inv[item]){say("Craft "+item+" first.");return}
+ if(type==="eye"&&time%480&lt;260){say("The Eye can only be summoned at night.");return}
+ inv[item]--;boss={type,x:p.x+150,y:p.y-100,w:type==="king"?66:48,
+ h:type==="king"?48:48,vx:0,vy:0,hp:type==="king"?900:1200,
+ max:type==="king"?900:1200,t:0,hit:0,ground:false};
+ say(type==="king"?"King Slime has arrived!":"The Eye of Cthulhu awakens!");
+}
+function craftUI(){
+ let el=$("craft");el.innerHTML="<h3>Inventory & crafting</h3>";
+ let bag=document.createElement("small");
+ bag.textContent=Object.entries(inv).filter(([k,v])=&gt;v&gt;0).map(([k,v])=&gt;k+": "+v).join(" · ");
+ el.append(bag);
+ for(const [name,cost,station,count=1] of recipes){
+  let b=document.createElement("button");
+  b.textContent=name+(count&gt;1?" ×"+count:"")+" — "+Object.entries(cost).map(([k,v])=&gt;v+" "+k).join(", ")+(station?" ["+station+"]":"");
+  b.disabled=!!(station&&!inv[station])||Object.entries(cost).some(([k,v])=&gt;(inv[k]||0)&lt;v);
+  b.onclick=()=&gt;{for(const [k,v] of Object.entries(cost))inv[k]-=v;add(name,count);craftUI()};
+  el.append(b);
+ }
+ for(const [label,type] of [["Summon King Slime","king"],["Summon Eye (night)","eye"]]){
+  let b=document.createElement("button");b.textContent=label;b.onclick=()=&gt;summon(type);el.append(b);
+ }
+ let info=document.createElement("small");
+ info.textContent="Stations work while carried. Boss trophies are permanent. Crafting does not pause the world.";
+ el.append(info);
+}
+onkeydown=e=&gt;{
+ if(["Space","ArrowUp","ArrowDown"].includes(e.code))e.preventDefault();
+ keys[e.code]=true;if(e.repeat||!running)return;
+ if(/^Digit[1-6]$/.test(e.code))selected=+e.code.slice(-1)-1;
+ if(e.code==="KeyE"){let v=$("craft").style.display==="block";$("craft").style.display=v?"none":"block";if(!v)craftUI()}
+ if(e.code==="KeyF")save();
+ if(e.code==="Escape"){paused=!paused;say(paused?"Paused — Esc to resume":"Resumed")}
+ if(e.code==="KeyH"&&inv.Potion&gt;0&&healCD&lt;=0&&p.hp&lt;p.max){
+ inv.Potion--;p.hp=Math.min(p.max,p.hp+50);healCD=30;say("Restored 50 health.")}
+};
+onkeyup=e=&gt;keys[e.code]=false;
+onblur=()=&gt;{keys={};mouse.left=mouse.right=false;if(running)paused=true};
+canvas.onmousemove=e=&gt;{let r=canvas.getBoundingClientRect();mouse.x=(e.clientX-r.left)*vw/r.width;mouse.y=(e.clientY-r.top)*vh/r.height};
+canvas.onmousedown=e=&gt;{if(e.button===0)mouse.left=true;if(e.button===2)mouse.right=true};
+onmouseup=e=&gt;{if(e.button===0)mouse.left=false;if(e.button===2)mouse.right=false};
+canvas.oncontextmenu=e=&gt;e.preventDefault();
+let shots=[];
+function use(){
+ if(attack&gt;0)return;
+ let wx=mouse.x+cam.x,wy=mouse.y+cam.y,x=Math.floor(wx/T),y=Math.floor(wy/T),
+ distance=Math.hypot(wx-p.x-p.w/2,wy-p.y-p.h/2),slot=slots[selected];
+ if(mouse.right||mouse.left&&selected&gt;=3){
+  if(distance&gt;75)return;
+  let id={Dirt:1,Wood:4,Torch:8}[slot];
+  if(id&&inv[slot]&gt;0&&tile(x,y)===0){
+   let block={x:x*T,y:y*T,w:T,h:T};
+   if(overlap(block,p))return;
+   if(![tile(x+1,y),tile(x-1,y),tile(x,y+1),tile(x,y-1)].some(v=&gt;v!==0))return;
+   set(x,y,id);inv[slot]--;attack=.14;
+  }
+ }else if(mouse.left&&selected===0&&distance&lt;75){
+  let id=tile(x,y);
+  if(id&&y&lt;H-2&&x&gt;=0&&x&lt;W){
+   set(x,y,0);let item=id===3||id===7?"Dirt":names[id];
+   if(id!==5)add(item);attack=id===2||id===6?.28:.16;
+  }
+ }else if(mouse.left&&selected===1){
+  attack=.3;p.face=wx&gt;p.x?1:-1;
+  for(const e of [...enemies,...(boss?[boss]:[])])
+   if(Math.hypot(e.x+e.w/2-p.x,e.y+e.h/2-p.y-10)&lt;65){
+    e.hp-=inv["Iron sword"]?30:12;e.hit=.12;e.vx=p.face*100;
+   }
+ }else if(mouse.left&&selected===2){
+  if(!inv.Bow){say("Craft a bow first.");attack=.5;return}
+  if(!inv.Arrows)return;
+  inv.Arrows--;attack=.35;
+  let a=Math.atan2(wy-p.y-10,wx-p.x);
+  shots.push({x:p.x+4,y:p.y+10,vx:Math.cos(a)*240,vy:Math.sin(a)*240,life:3});
+ }
+}
+function update(dt){
+ time+=dt;attack-=dt;healCD-=dt;p.ifr-=dt;
+ if(noticeTimer&gt;0){noticeTimer-=dt;if(noticeTimer&lt;=0)$("notice").textContent=""}
+ p.vx+=(Number(!!keys.KeyD)-Number(!!keys.KeyA))*550*dt;
+ if(!keys.KeyA&&!keys.KeyD)p.vx*=Math.pow(.001,dt);
+ p.vx=Math.max(-85,Math.min(85,p.vx));if(Math.abs(p.vx)&gt;2)p.face=Math.sign(p.vx);
+ if(keys.Space&&p.ground){p.vy=-200;p.ground=false}
+ p.vy=Math.min(300,p.vy+480*dt);move(p,dt);
+ if(p.y&gt;H*T-30)hurt(999);
+ cam.x=Math.max(0,Math.min(W*T-vw,p.x-vw/2));
+ cam.y=Math.max(0,Math.min(H*T-vh,p.y-vh*.45));
+ use();
+ spawnClock-=dt;
+ if(spawnClock&lt;=0&&enemies.length&lt;14){
+  spawnClock=3;let x=Math.max(2,Math.min(W-3,Math.floor(p.x/T)+(Math.random()&lt;.5?-1:1)*(20+Math.floor(Math.random()*15))));
+  let night=time%480&gt;260,type=night?"eye":"slime";
+  enemies.push(createEnemy(type,x*T,type==="eye"?p.y-70:surface[x]*T-20));
+ }
+ for(const e of [...enemies,...(boss?[boss]:[])]){
+  e.t+=dt;e.hit-=dt;
+  let dx=p.x-e.x,dy=p.y-e.y;
+  if(e.type==="eye"){
+   let rage=e===boss&&e.hp&lt;e.max/2;
+   let speed=e===boss?(rage?150:85):40;
+   let charging=e===boss&&e.t%3&gt;2;
+   let tx=charging?dx:dx+Math.sin(e.t)*70,ty=charging?dy:dy-65;
+   let len=Math.hypot(tx,ty)||1;
+   e.vx+=(tx/len*speed-e.vx)*dt*(charging?8:2);
+   e.vy+=(ty/len*speed-e.vy)*dt*2;
+   e.x+=e.vx*dt;e.y+=e.vy*dt;
+  }else{
+   if(e.ground&&e.t&gt;(e===boss?.8:1.3)){
+    e.vy=e===boss?-250:-145;e.vx=Math.sign(dx)*(e===boss?105:40);e.t=0;
+    if(e===boss&&enemies.length&lt;18)enemies.push(createEnemy("slime",e.x,e.y-20));
+   }
+   e.vy+=480*dt;move(e,dt);
+   if(e===boss&&Math.abs(dx)&gt;430){e.x=p.x+80;e.y=p.y-80}
+  }
+  if(overlap(e,p))hurt(e===boss?24:12);
+ }
+ for(const s of shots){
+  s.life-=dt;s.vy+=80*dt;s.x+=s.vx*dt;s.y+=s.vy*dt;
+  if(solid(tile(s.x/T,s.y/T)))s.life=0;
+  for(const e of [...enemies,...(boss?[boss]:[])])
+   if(s.life&gt;0&&s.x&gt;e.x&&s.x&lt;e.x+e.w&&s.y&gt;e.y&&s.y&lt;e.y+e.h){e.hp-=22;e.hit=.1;s.life=0}
+ }
+ shots=shots.filter(s=&gt;s.life&gt;0);
+ enemies=enemies.filter(e=&gt;{
+  if(e.hp&lt;=0){add(e.type==="eye"?"Lens":"Gel",1+Math.floor(Math.random()*2));return false}
+  return Math.abs(e.x-p.x)&lt;900;
+ });
+ if(boss&&boss.hp&lt;=0){
+  defeated[boss.type]=true;add(boss.type==="king"?"Slime trophy":"Eye trophy");
+  add("Iron bar",10);p.max=Math.min(200,p.max+20);p.hp=p.max;
+  say("Boss defeated! +20 maximum health and 10 iron bars.");boss=null;
+ }
+ if(!boss&&p.ifr&lt;=-6)p.hp=Math.min(p.max,p.hp+dt);
+ saveClock+=dt;
+ if(saveClock&gt;90){saveClock=0;save()}
+}
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.floor(x),Math.floor(y),w,h)}
+function drawEnemy(e){
+ let x=Math.floor(e.x-cam.x),y=Math.floor(e.y-cam.y);
+ if(e.type==="eye"){
+  rect(x+6,y,e.w-12,e.h,"#e7e5df");rect(x,y+8,e.w,e.h-16,"#e7e5df");
+  rect(x+e.w*.5,y+e.h*.25,Math.max(5,e.w*.3),e.h*.5,e===boss&&e.hp&lt;e.max/2?"#bd2439":"#487ec1");
+  rect(x+e.w*.65,y+e.h*.4,4,Math.max(4,e.h*.2),"#171a29");
+  if(e===boss){rect(x-7,y+12,10,4,"#bd4558");rect(x-12,y+24,15,3,"#bd4558")}
+ }else{
+  rect(x+4,y,e.w-8,e.h,"#4b96cf");rect(x,y+6,e.w,e.h-6,"#4b96cf");
+  rect(x+6,y+3,e.w-14,3,"#9ce1ef");
+  rect(x+e.w*.3,y+e.h*.5,3,3,"#10263b");
+  rect(x+e.w*.65,y+e.h*.5,3,3,"#10263b");
+  if(e===boss){rect(x+18,y-9,30,9,"#eac84d");rect(x+18,y-14,5,8,"#ffe775");rect(x+42,y-14,5,8,"#ffe775")}
+ }
+ if(e.hit&gt;0){ctx.globalAlpha=.55;rect(x,y,e.w,e.h,"white");ctx.globalAlpha=1}
+ if(e!==boss){rect(x,y-5,e.w,2,"#371b30");rect(x,y-5,e.w*Math.max(0,e.hp/e.max),2,"#df5562")}
+}
+function draw(){
+ let night=time%480&gt;260;
+ rect(0,0,vw,vh,night?"#101b37":"#75b5da");
+ if(!running)return;
+ for(let i=0;i&lt;30;i++)if(night)rect((i*73-cam.x*.03+vw*20)%vw,(i*37)%80,1,1,"#dbe8ff");
+ rect(vw*.75,25,18,18,night?"#e4ebdc":"#ffe49c");
+ for(let i=-1;i&lt;Math.ceil(vw/90)+1;i++){
+  let x=i*90-(cam.x*.15)%90;
+  rect(x,100+Math.sin(i*2)*15,92,vh,"#46697b");
+ }
+ let x0=Math.max(0,Math.floor(cam.x/T)),x1=Math.min(W,Math.ceil((cam.x+vw)/T));
+ let y0=Math.max(0,Math.floor(cam.y/T)),y1=Math.min(H,Math.ceil((cam.y+vh)/T));
+ let torches=[];
+ for(let y=y0;y&lt;y1;y++)for(let x=x0;x&lt;x1;x++){
+  let v=tile(x,y),sx=x*T-cam.x,sy=y*T-cam.y;
+  if(y&gt;surface[x]+1)rect(sx,sy,T,T,"#332d34");
+  if(!v)continue;
+  if(v===8){rect(sx+5,sy+5,2,7,"#81572e");rect(sx+4,sy+1,4,5,"#ffcd58");torches.push([sx+6,sy+4]);continue}
+  rect(sx,sy,T,T,v===7&&evil==="Crimson"?"#a43c49":colors[v]);
+  if(v===3||v===7){rect(sx,sy+4,T,8,"#845637")}
+  let h=(x*31+y*17)%9;rect(sx+2+h%5,sy+5,3,2,v===6?"#d5c0a3":"#00000022");
+  rect(sx,sy,T,1,"#ffffff16");
+ }
+ for(const e of enemies)drawEnemy(e);if(boss)drawEnemy(boss);
+ for(const s of shots)rect(s.x-cam.x,s.y-cam.y,5,1,"#f2dda3");
+ let px=p.x-cam.x,py=p.y-cam.y;
+ if(p.ifr&lt;=0||Math.floor(p.ifr*15)%2){
+  rect(px+1,py,7,4,"#65412e");rect(px+1,py+4,7,5,"#efbe8d");
+  rect(px+(p.face&gt;0?6:1),py+5,1,1,"#111");
+  rect(px,py+9,9,7,inv["Iron armor"]?"#abb3bf":"#39a5a9");
+  let walk=Math.abs(p.vx)&gt;5?Math.sin(time*20)*2:0;
+  rect(px,py+16,3,5+walk,"#303f77");rect(px+6,py+16,3,5-walk,"#303f77");
+  if(attack&gt;0&&selected===1)rect(px+(p.face&gt;0?10:-17),py+5,17,3,"#dce6e9");
+ }
+ let depth=p.y/T-(surface[Math.max(0,Math.min(W-1,Math.floor(p.x/T)))]||40);
+ let darkness=Math.min(.93,Math.max(night?.43:0,depth/28));
+ if(darkness&gt;0){
+  ctx.save();
+  let light=ctx.createRadialGradient(px+4,py+8,12,px+4,py+8,115);
+  light.addColorStop(0,"rgba(0,0,12,0)");
+  light.addColorStop(1,`rgba(0,0,12,${darkness})`);
+  ctx.fillStyle=light;ctx.fillRect(0,0,vw,vh);
+  ctx.globalCompositeOperation="screen";
+  for(const [x,y] of torches){
+   let g=ctx.createRadialGradient(x,y,1,x,y,45);
+   g.addColorStop(0,"#e7953944");g.addColorStop(1,"#e7953900");
+   ctx.fillStyle=g;ctx.fillRect(x-45,y-45,90,90);
+  }ctx.restore();
+ }
+ let tx=Math.floor((mouse.x+cam.x)/T)*T-cam.x,ty=Math.floor((mouse.y+cam.y)/T)*T-cam.y;
+ ctx.strokeStyle="#ffffff88";ctx.strokeRect(Math.floor(tx)+.5,Math.floor(ty)+.5,T-1,T-1);
+ if(boss){
+  rect(vw/2-100,vh-30,200,8,"#351b32");
+  rect(vw/2-100,vh-30,200*Math.max(0,boss.hp/boss.max),8,"#d84962");
+  ctx.font="8px monospace";ctx.fillStyle="white";ctx.textAlign="center";
+  ctx.fillText((boss.type==="king"?"KING SLIME":"EYE OF CTHULHU")+" "+Math.ceil(boss.hp)+"/"+boss.max,vw/2,vh-34);
+  ctx.textAlign="left";
+ }
+ $("hud").textContent=
+ `HP ${Math.ceil(p.hp)}/${p.max}  |  ${night?"Night":"Day"}  |  ${evil}  ${paused?"PAUSED":""}\n`;
+ $("hud").style.whiteSpace="pre-line";
+ $("hud").textContent+=slots.map((s,i)=&gt;`${i===selected?"[":""}${i+1} ${s}${i&gt;=3?" "+(inv[s]||0):""}${i===selected?"]":""}`).join("  ");
+ $("hud").textContent+=`\nPotions ${inv.Potion||0} ${healCD&gt;0?"("+Math.ceil(healCD)+"s)":""} · Arrows ${inv.Arrows||0} · Bosses ${Object.keys(defeated).length}/2`;
+}
+let last=performance.now();
+function loop(now){
+ let dt=Math.min(.035,(now-last)/1000);last=now;
+ if(running&&!paused)update(dt);draw();requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
