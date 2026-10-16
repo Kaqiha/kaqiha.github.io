@@ -9,7 +9,7 @@
   /* Layout: a large square of graph paper on the left, a quiet control column on the right; on phones the controls stack under the field. */
   --bg:#E8ECF3; --surface:#F5F7FB; --surface-2:#FFFFFF; --line:#CBD3E2;
   --fg:#141A2A; --muted:#556079;
-  --field:#FAFBFE; --grid:#E4E9F2; --grid-major:#CCD4E4; --axis:#8793B0; --scrim:rgba(250,251,254,.88);
+  --field:#FAFBFE; --grid:#E4E9F2; --grid-major:#CCD4E4; --axis:#8793B0; --scrim:rgba(250,251,254,.88); --scrim-soft:rgba(250,251,254,.74);
   --c0:#2B54E0; --c0-ink:#FFFFFF;
   --c1:#D95F06; --c1-ink:#FFFFFF;
   --c2:#0B8A67; --c2-ink:#FFFFFF;
@@ -25,7 +25,7 @@
   :root:not([data-theme="light"]){
     --bg:#0E121A; --surface:#151A25; --surface-2:#1B2230; --line:#2A3246;
     --fg:#E8ECF5; --muted:#9BA6BE;
-    --field:#111620; --grid:#1A2130; --grid-major:#27304A; --axis:#5C6987; --scrim:rgba(17,22,32,.88);
+    --field:#111620; --grid:#1A2130; --grid-major:#27304A; --axis:#5C6987; --scrim:rgba(17,22,32,.88); --scrim-soft:rgba(17,22,32,.74);
     --c0:#7B9BFF; --c0-ink:#0A1128;
     --c1:#FF9A47; --c1-ink:#1C0F00;
     --c2:#3FD3A6; --c2-ink:#04201A;
@@ -39,7 +39,7 @@
 :root[data-theme="dark"]{
   --bg:#0E121A; --surface:#151A25; --surface-2:#1B2230; --line:#2A3246;
   --fg:#E8ECF5; --muted:#9BA6BE;
-  --field:#111620; --grid:#1A2130; --grid-major:#27304A; --axis:#5C6987; --scrim:rgba(17,22,32,.88);
+  --field:#111620; --grid:#1A2130; --grid-major:#27304A; --axis:#5C6987; --scrim:rgba(17,22,32,.88); --scrim-soft:rgba(17,22,32,.74);
   --c0:#7B9BFF; --c0-ink:#0A1128;
   --c1:#FF9A47; --c1-ink:#1C0F00;
   --c2:#3FD3A6; --c2-ink:#04201A;
@@ -106,6 +106,17 @@ h1{
 }
 .v-title{margin:0;font-family:var(--font-display);font-weight:700;font-size:clamp(30px,7vw,52px);line-height:1.05;letter-spacing:-.02em}
 .v-sub{margin:0 0 12px;max-width:44ch;font:500 13px/1.4 var(--font-mono);color:var(--muted)}
+.countdown{
+  position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:10px;
+  padding:12px; overflow:auto; text-align:center; background:var(--scrim-soft);
+}
+.cd-cap{margin:0;font:500 12px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.cd-num{margin:0;font-family:var(--font-display);font-weight:700;font-size:clamp(52px,14vw,112px);line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.roster{display:grid;gap:6px;width:min(100%,420px);padding:12px 14px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.roster-row{display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:10px}
+.roster-row .dot{width:22px;height:22px;font-size:12px}
+.roster-name{font-weight:600;font-size:14px}
+.roster-fn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 14px var(--font-mono)}
 .caption{margin:10px 0 0;max-width:780px;font:12px/1.5 var(--font-mono);color:var(--muted)}
 
 .panel{
@@ -202,6 +213,11 @@ h2{margin:0;font-family:var(--font-display);font-weight:600;font-size:17px;lette
     </div>
     <div class="field" id="field">
       <canvas id="cv" role="img" aria-label="Square arena with the balls. Each ball's function curve is drawn across the field."></canvas>
+      <div class="countdown" id="countdown" hidden>
+        <p class="cd-cap">Round starts in</p>
+        <p class="cd-num" id="cd-num">10</p>
+        <div class="roster" id="roster"></div>
+      </div>
       <div class="verdict" id="verdict" role="status" hidden>
         <p class="v-title" id="v-title"></p>
         <p class="v-sub" id="v-sub"></p>
@@ -425,7 +441,7 @@ function el(tag,props,kids){
   return e;
 }
 const cv=$('cv'),ctx=cv.getContext('2d'),fieldEl=$('field');
-const LINGER=0.45,STEP=0.04,PREV_STEP=0.08,FREEZE=0.6,MAX_BALLS=6,MIN_BALLS=2,DAMAGE=20;
+const LINGER=0.45,STEP=0.04,PREV_STEP=0.08,FREEZE=0.6,MAX_BALLS=6,MIN_BALLS=2,DAMAGE=10,COUNTDOWN=5;
 const reduce=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 const DISPLAY='"Bricolage Grotesque",system-ui,sans-serif',MONO='"JetBrains Mono",ui-monospace,monospace';
 const PRESETS=['0.5x','-0.5x','3sin(x)','2cos(2x)','x^2/5','abs(x)-3','tan(x)'];
@@ -453,13 +469,13 @@ function beamSpeed(){return 2*FIELD*(reduce?12:1.7);}
 geom();
 
 const players=[];
-let mode='idle',beams=[],fx=[],clock=0;
+let mode='idle',beams=[],fx=[],clock=0,countdown=0,lastCount=0;
 let col={c:[],ink:[]},cssSize=600,dpr=1;
 const mainBtn=$('btn-main'),resetBtn=$('btn-reset'),shuffleBtn=$('btn-shuffle'),soundBtn=$('btn-sound'),addBtn=$('btn-add');
-const rematchBtn=$('btn-rematch'),verdictEl=$('verdict'),statusEl=$('status'),lockNote=$('lock-note'),playersEl=$('players');
+const rematchBtn=$('btn-rematch'),cdEl=$('countdown'),cdNum=$('cd-num'),rosterEl=$('roster'),verdictEl=$('verdict'),statusEl=$('status'),lockNote=$('lock-note'),playersEl=$('players');
 
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
-function locked(){return mode==='running'||mode==='paused';}
+function locked(){return mode==='running'||mode==='paused'||mode==='countdown';}
 
 /* ---------- sound (synthesised with Web Audio, no files) ---------- */
 let actx=null,master=null;
@@ -519,6 +535,7 @@ function sfxWin(){[523.25,659.25,783.99,1046.5].forEach(function(f,i){tone({type
 function sfxDraw(){tone({type:'sine',f0:330,f1:300,dur:0.4,gain:0.3,delay:0.25});tone({type:'sine',f0:247,f1:200,dur:0.6,gain:0.3,delay:0.5});}
 function sfxStart(){tone({type:'square',f0:440,dur:0.08,gain:0.12});tone({type:'square',f0:660,dur:0.12,gain:0.12,delay:0.09});}
 function sfxBump(v){tone({type:'sine',f0:260,f1:130,dur:0.09,gain:Math.min(0.32,0.08+0.03*v)});}
+function sfxTick(final){tone({type:'square',f0:final?880:520,dur:0.07,gain:0.1});}
 
 /* ---------- functions ---------- */
 function hasRealValues(f){
@@ -642,11 +659,27 @@ function startRound(rand){
     p.sx=p.x;p.sy=p.y;p.hp=p.maxHp=cfg.hp;p.charge=0;p.hits=0;p.alive=true;
     p.flash=0;p.hitFlash=0;p.freeze=0;p.ang=Math.random()*Math.PI*2;
   });
-  beams=[];fx=[];clock=0;verdictEl.hidden=true;mode='running';
+  beams=[];fx=[];clock=0;verdictEl.hidden=true;
+  buildRoster();
+  mode='countdown';countdown=COUNTDOWN;lastCount=COUNTDOWN;
+  cdNum.textContent=String(COUNTDOWN);cdEl.hidden=false;
+  sfxTick(false);updateUI();
+}
+function beginRound(){
+  cdEl.hidden=true;clock=0;mode='running';
   sfxStart();updateUI();
 }
+function buildRoster(){
+  while(rosterEl.firstChild) rosterEl.removeChild(rosterEl.firstChild);
+  players.forEach(function(p){
+    const dot=el('span',{class:'dot','aria-hidden':'true',style:'background:var(--c'+p.slot+');color:var(--c'+p.slot+'-ink)',text:p.name});
+    rosterEl.appendChild(el('div',{class:'roster-row'},[
+      dot,el('span',{class:'roster-name',text:'Ball '+p.name}),el('span',{class:'roster-fn',text:p.fname+'(x) = '+p.src})
+    ]));
+  });
+}
 function resetRound(){
-  mode='idle';beams=[];fx=[];clock=0;verdictEl.hidden=true;
+  mode='idle';beams=[];fx=[];clock=0;verdictEl.hidden=true;cdEl.hidden=true;
   players.forEach(function(p){
     p.x=p.sx;p.y=p.sy;p.hp=p.maxHp=cfg.hp;p.hits=0;p.charge=0;p.alive=true;p.flash=0;p.hitFlash=0;p.freeze=0;
   });
@@ -860,7 +893,7 @@ function draw(){
   drawGrid();
   ctx.save();ctx.beginPath();ctx.rect(0,0,cssSize,cssSize);ctx.clip();
   ctx.lineJoin='round';
-  if(mode==='idle'){
+  if(mode==='idle'||mode==='countdown'){
     ctx.setLineDash([6,6]);ctx.lineWidth=2;
     players.forEach(function(p){
       if(!p.valid) return;
@@ -900,6 +933,7 @@ function draw(){
 function statusText(){
   if(players.some(function(p){return !p.valid;})) return 'Fix the highlighted function to start.';
   if(mode==='idle') return 'Ready. Dashed lines preview each shot from where the balls stand.';
+  if(mode==='countdown') return 'Round starts in '+Math.ceil(countdown)+' s. Cancel to go back.';
   if(mode==='running'){
     const a=players.filter(function(p){return p.alive;});
     const cd=a.length?Math.min.apply(null,a.map(function(p){return (1-p.charge)*cooldownOf(p);})):0;
@@ -922,7 +956,7 @@ function syncHud(){
 function updateUI(){
   const lk=locked();
   const bad=players.some(function(p){return !p.valid;});
-  mainBtn.textContent={idle:'Start duel',running:'Pause',paused:'Resume',over:'Rematch'}[mode];
+  mainBtn.textContent={idle:'Start duel',countdown:'Cancel',running:'Pause',paused:'Resume',over:'Rematch'}[mode];
   mainBtn.disabled=bad&&(mode==='idle'||mode==='over');
   shuffleBtn.disabled=mode!=='idle';
   players.forEach(function(p){
@@ -981,6 +1015,7 @@ function bindSetting(s){
 
 mainBtn.addEventListener('click',function(){
   if(mode==='idle') startRound(false);
+  else if(mode==='countdown') resetRound();
   else if(mode==='running'){mode='paused';updateUI();}
   else if(mode==='paused'){mode='running';updateUI();}
   else startRound(true);
@@ -1002,6 +1037,12 @@ let last=performance.now();
 function frame(now){
   const dt=Math.min(0.05,(now-last)/1000);last=now;
   if(mode==='running') stepGame(dt);
+  else if(mode==='countdown'){
+    countdown-=dt;
+    const c=Math.ceil(countdown);
+    if(countdown<=0) beginRound();
+    else if(c!==lastCount){lastCount=c;cdNum.textContent=String(c);sfxTick(c<=3);}
+  }
   else if(mode==='over'){advanceBeams(dt,false);tickVisuals(dt);}
   draw();syncHud();
   requestAnimationFrame(frame);
