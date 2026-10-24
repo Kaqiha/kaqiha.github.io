@@ -75,7 +75,9 @@ h1 { font-size: clamp(46px, 11vw, 84px); line-height: 0.92; letter-spacing: -0.0
 .seg button { background: var(--ink-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
 .seg button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--ink-3); }
 input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 100%; }
-#offsetVal { min-width: 64px; }
+#offsetVal, #speedVal { min-width: 64px; }
+.p-speed { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.p-speed input { width: 150px; }
 .hint { margin: 0; color: var(--muted); font-size: 12px; max-width: 60ch; }
 
 .primary {
@@ -125,7 +127,7 @@ input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 100%
     <header>
       <h1>Tetrachord</h1>
       <div class="lanebar" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <p class="lede">Four keys, five original songs. Each lane is a pitch band, low to high, so your fingers play the melody. The bar under each song shows how its notes spread across the lanes.</p>
+      <p class="lede">Four keys, seven original songs. Each lane is a pitch band, low to high, so your fingers play the melody. Longer notes and accents arrive as chords of two or three keys at once. The bar under each song shows how its notes spread across the lanes.</p>
     </header>
 
     <div id="songs" role="radiogroup" aria-label="Choose a song"></div>
@@ -138,18 +140,22 @@ input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 100%
           <button type="button" data-setting="keys" data-value="arrows" aria-pressed="false">Arrows</button>
         </span>
       </div>
-      <div class="set-row"><span>Speed</span>
+      <div class="set-row"><span>Fall speed</span>
+        <input id="speed" type="range" min="50" max="500" step="5" value="100" aria-label="Note falling speed in percent">
+        <span id="speedVal">100%</span>
         <span class="seg">
-          <button type="button" data-setting="speed" data-value="slow" aria-pressed="false">Slow</button>
-          <button type="button" data-setting="speed" data-value="normal" aria-pressed="true">Normal</button>
-          <button type="button" data-setting="speed" data-value="fast" aria-pressed="false">Fast</button>
+          <button type="button" data-fall="70" aria-pressed="false">Slow</button>
+          <button type="button" data-fall="100" aria-pressed="true">Normal</button>
+          <button type="button" data-fall="150" aria-pressed="false">Fast</button>
+          <button type="button" data-fall="250" aria-pressed="false">Insane</button>
+          <button type="button" data-fall="500" aria-pressed="false">Max</button>
         </span>
       </div>
       <div class="set-row"><span>Timing</span>
         <input id="offset" type="range" min="-150" max="150" step="10" value="0" aria-label="Audio offset in milliseconds">
         <span id="offsetVal">0 ms</span>
       </div>
-      <p class="hint">Each song starts with its own key map. On a phone or tablet, tap the four lanes. If hits feel early or late with Bluetooth audio, move Timing until they line up. Esc pauses.</p>
+      <p class="hint">Each song starts with its own key map. On a phone or tablet, tap the four lanes. If hits feel early or late with Bluetooth audio, move Timing until they line up. Fall speed only changes how fast notes drop, not the music. Esc pauses.</p>
     </div>
 
     <button id="play" class="primary" type="button">Play</button>
@@ -165,11 +171,12 @@ input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 100%
       <div id="pause" class="overlay" hidden>
         <h2>Paused</h2>
         <button id="resume" class="primary" type="button">Resume</button>
+        <label class="p-speed">Fall speed <input id="speedP" type="range" min="50" max="500" step="5" value="100" aria-label="Note falling speed in percent"><span id="speedPVal">100%</span></label>
         <button id="restart" class="ghost" type="button">Restart</button>
         <button id="quit" class="ghost" type="button">Song list</button>
       </div>
     </div>
-    <p class="tip">Tap or press a key as each note reaches the line.</p>
+    <p class="tip">Tap or press a key as each note reaches the line. Press [ or ] to change fall speed.</p>
   </section>
 
   <section id="results" hidden>
@@ -201,7 +208,23 @@ input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 100%
 /* ---------- Tetrachord engine: songs (as data) + chart builder. No DOM. ---------- */
 const MAJ = [0, 2, 4, 5, 7, 9, 11];
 const MIN = [0, 2, 3, 5, 7, 8, 10];
+const HARM = [0, 2, 3, 5, 7, 8, 11];
 const PC = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
+/* How many chord tones ride along with melody notes, by song difficulty. */
+const CHART = {
+  Easy:    { long6: 2, long4: 1, mid: 0, run: 0 },
+  Normal:  { long6: 2, long4: 1, mid: 1, run: 0 },
+  Hard:    { long6: 2, long4: 2, mid: 1, run: 1 },
+  Extreme: { long6: 2, long4: 2, mid: 2, run: 1 }
+};
+const PCS = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+
+/* Chart-writing helpers: seq16 lays one degree on each sixteenth, tp lays a beat-long triplet,
+   zig / zag are rising and falling sequence figures (eight sixteenths). */
+function seq16(a) { return a.map(function (d, i) { return i + ':' + d + ':1'; }).join(' '); }
+function tp(st, a) { return a.map(function (d, i) { return (st + i * 4 / 3) + ':' + d + ':1.3333'; }).join(' '); }
+function zig(x) { return [x, x + 2, x + 1, x + 3, x + 2, x + 4, x + 3, x + 5]; }
+function zag(x) { return [x, x - 2, x - 1, x - 3, x - 2, x - 4, x - 3, x - 5]; }
 
 const KEYSETS = {
   dfjk:   { codes: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], labels: ['D', 'F', 'J', 'K'] },
@@ -353,6 +376,92 @@ const SONGS = [
         '0:12:1 1:14:1 2:16:1 3:19:1 4:16:2 6:14:2 8:12:1 9:14:1 10:16:1 11:14:1 12:12:4',
         '0:13:1 1:15:1 2:17:1 3:20:1 4:17:2 6:15:2 8:13:2 10:15:2 12:17:2 14:20:2'] }
     }
+  },
+  {
+    /* Baroque counterpoint: a subject, an answer a fifth higher, sequential episodes, a stretto of
+       broken chords, an inverted episode and a pedal-point finish. cm = a second voice you hear but don't play. */
+    id: 'subject-and-answer', title: 'Subject & Answer', feel: 'baroque counterpoint, no mercy', keyName: 'D minor',
+    bpm: 132, root: 62, scale: HARM, diff: 'Extreme',
+    keys: KEYSETS.dfjk,
+    pal: { lanes: ['#f6e3b4', '#e6b86a', '#d68f55', '#c4684f'], bg: ['#2a1d12', '#0e0905'], accent: '#e6b86a' },
+    lead: { layers: [{ w: 'sawtooth', m: 1, det: 0, g: 1 }, { w: 'square', m: 2, det: 3, g: 0.25 }], gain: 0.04, atk: 0.002, sus: 0.12, rel: 0.1, cut: 4200 },
+    voice: { w: 'sawtooth', gain: 0.03, cut: 1800 },
+    padGain: 0.012, bassWave: 'triangle', bassGain: 0.26, bassLen: 1.6,
+    bass: 'x.x.x.x.x.x.x.x.',
+    drums: { k: '................', s: '................', h: '................' },
+    fill: false,
+    form: ['i', 'A', 'B', 'C', 'A', 'E', 'C', 'D'],
+    sections: {
+      A: { ch: [0, 3, 4, 0], mel: [
+        '0:7:3 3:6:1 4:7:2 6:9:2 8:11:4 12:9:2 14:7:2',
+        '0:8:1 1:7:1 2:6:1 3:7:1 4:5:2 6:7:2 8:4:4 12:6:2 14:7:2',
+        '0:11:3 3:10:1 4:11:2 6:13:2 8:15:4 12:13:2 14:11:2',
+        '0:12:1 1:11:1 2:10:1 3:11:1 4:9:2 6:11:2 8:8:4 12:10:2 14:11:2'],
+        cm: ['', '',
+          '0:4:2 2:6:2 4:8:2 6:6:2 8:4:2 10:6:2 12:8:2 14:6:2',
+          '0:2:2 2:4:2 4:7:2 6:4:2 8:2:2 10:4:2 12:7:2 14:4:2'] },
+      B: { ch: [5, 3, 6, 4], mel: [
+        seq16(zig(9).concat(zig(8))),
+        seq16(zig(7).concat(zig(6))),
+        seq16(zig(5).concat(zig(4))),
+        seq16(zig(3)) + ' 8:7:2 10:6:2 12:7:4'],
+        cm: ['0:-2:4 4:0:4 8:2:4 12:0:4', '0:-4:4 4:-2:4 8:0:4 12:-2:4', '0:-1:4 4:1:4 8:3:4 12:1:4', '0:-3:4 4:-1:4 8:1:4 12:4:4'] },
+      C: { ch: [0, 3, 6, 4], mel: [
+        seq16([7, 9, 11, 14, 11, 9, 7, 9, 11, 14, 16, 14, 11, 9, 7, 4]),
+        seq16([10, 12, 14, 12, 10, 7, 10, 12, 14, 17, 14, 12, 10, 7, 5, 7]),
+        seq16([13, 15, 17, 15, 13, 10, 13, 15, 17, 20, 17, 15, 13, 10, 8, 6]),
+        seq16([11, 13, 15, 13, 11, 8, 11, 13, 15, 18, 15, 13, 11, 8, 6, 4])],
+        cm: ['0:-7:4 4:-5:4 8:-3:4 12:-5:4', '0:-4:4 4:-2:4 8:0:4 12:-2:4', '0:-8:4 4:-6:4 8:-4:4 12:-6:4', '0:-10:4 4:-8:4 8:-6:4 12:-8:4'] },
+      E: { ch: [0, 5, 3, 4], mel: [
+        seq16(zag(14).concat(zag(12))),
+        seq16(zag(11).concat(zag(10))),
+        seq16(zag(9).concat(zag(8))),
+        seq16(zag(7)) + ' 8:6:2 10:8:2 12:11:4'],
+        cm: ['0:-7:4 4:-5:4 8:-3:4 12:-5:4', '0:-9:4 4:-7:4 8:-5:4 12:-7:4', '0:-11:4 4:-9:4 8:-7:4 12:-9:4', '0:-10:4 4:-8:4 8:-6:4 12:-8:4'] },
+      D: { ch: [0, 0, 4, 0], mel: [
+        seq16([14, 13, 12, 11, 10, 9, 8, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
+        seq16([7, 9, 8, 10, 9, 11, 10, 12, 11, 13, 12, 14, 13, 15, 14, 16]),
+        seq16([11, 13, 15, 13, 11, 13, 15, 18, 15, 13, 11, 13, 15, 13, 11, 8]),
+        '0:14:2 2:13:2 4:14:2 6:11:2 8:9:2 10:7:2 12:7:4'],
+        cm: ['0:-7:16', '0:-7:8 8:-5:8', '0:-10:8 8:-8:8', '0:-7:8 8:-7:8'] }
+    }
+  },
+  {
+    /* Romantic storm: rushing sixteenth runs in the right hand over a triplet arpeggio in the left
+       (three against four), with a singing middle section. arp = the left hand, heard but not played. */
+    id: 'cascade-impromptu', title: 'Cascade Impromptu', feel: 'romantic storm, three against four', keyName: 'C♯ minor',
+    bpm: 144, root: 61, scale: HARM, sharp: true, diff: 'Extreme',
+    keys: { codes: ['KeyS', 'KeyF', 'KeyJ', 'KeyL'], labels: ['S', 'F', 'J', 'L'] },
+    pal: { lanes: ['#9aa8ff', '#b79bff', '#e29bff', '#ffa8e6'], bg: ['#1a1633', '#08060f'], accent: '#b79bff' },
+    lead: { layers: [{ w: 'triangle', m: 1, det: 0, g: 1 }, { w: 'sine', m: 2, det: 0, g: 0.4 }, { w: 'sine', m: 1, det: 6, g: 0.5 }], gain: 0.07, atk: 0.003, sus: 0.2, rel: 0.2, cut: 4800 },
+    arp: { gain: 0.06 },
+    padGain: 0.016, bassWave: 'sine', bassGain: 0.2, bassLen: 10,
+    bass: 'x...............',
+    drums: { k: '................', s: '................', h: '................' },
+    fill: false,
+    form: ['i', 'A', 'B', 'A', 'C', 'B', 'A', 'D'],
+    sections: {
+      A: { ch: [0, 4, 0, 5], mel: [
+        seq16([4, 7, 9, 11, 14, 11, 9, 7, 4, 7, 9, 11, 14, 16, 14, 11]),
+        seq16([4, 6, 8, 11, 13, 15, 13, 11, 8, 6, 4, 6, 8, 11, 13, 11]),
+        seq16([14, 13, 12, 11, 10, 9, 8, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
+        '0:12:2 2:9:2 4:7:2 6:9:2 8:12:4 12:14:4'] },
+      B: { ch: [3, 4, 0, 4], mel: [
+        seq16([10, 12, 14, 12, 10, 7, 10, 12, 14, 17, 14, 12, 10, 7, 10, 12]),
+        '0:11:3 3:13:1 4:15:2 6:13:2 8:11:2 10:8:2 12:11:2 14:13:2',
+        seq16([14, 11, 9, 11, 14, 16, 14, 11, 9, 7, 9, 11, 14, 11, 9, 7]),
+        '0:13:1 1:11:1 2:8:1 3:6:1 4:8:1 5:11:1 6:13:1 7:15:1 8:13:4 12:11:4'] },
+      C: { ch: [5, 3, 0, 4], mel: [
+        '0:9:6 6:7:2 8:9:4 12:12:4',
+        tp(0, [10, 12, 14]) + ' 4:12:2 6:10:2 8:7:4 12:5:4',
+        '0:11:6 6:9:2 8:7:4 12:9:2 14:11:2',
+        tp(0, [13, 11, 8]) + ' 4:6:4 8:8:4 12:11:4'] },
+      D: { ch: [0, 3, 4, 0], mel: [
+        seq16([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
+        seq16([10, 12, 14, 17, 14, 12, 10, 7, 10, 12, 14, 17, 19, 17, 14, 12]),
+        seq16([11, 13, 15, 18, 15, 13, 11, 8, 11, 13, 15, 18, 20, 18, 15, 13]),
+        '0:14:2 2:11:2 4:9:2 6:7:2 8:4:4 12:0:4'] }
+    }
   }
 ];
 
@@ -364,7 +473,7 @@ function chordInfo(s, d) {
   const n = [degMidi(s, d), degMidi(s, d + 2), degMidi(s, d + 4)];
   const third = n[1] - n[0], fifth = n[2] - n[0];
   const q = fifth === 6 ? '°' : third === 3 ? 'm' : '';
-  return { notes: n, name: PC[n[0] % 12] + q };
+  return { notes: n, name: (s.sharp ? PCS : PC)[n[0] % 12] + q };
 }
 
 /* Turn a song into timed audio events, a chord-per-bar list, and a four-lane chart. */
@@ -386,6 +495,15 @@ function build(s) {
       chords.push(ci.name);
       ev.push({ t: T, k: 'pad', notes: ci.notes, d: bar });
 
+      /* optional left-hand arpeggio in triplets: twelve notes a bar against the sixteenths above */
+      if (s.arp) {
+        const ar = [[0, -24], [2, -24], [1, -12], [2, -12], [1, -12], [2, -24]];
+        for (let j = 0; j < 12; j++) {
+          const a = ar[j % 6];
+          ev.push({ t: T + j * step * 4 / 3, k: 'arp', m: ci.notes[a[0]] + a[1], d: step * 4 / 3 * 2.2, g: s.arp.gain });
+        }
+      }
+
       const groove = !intro || k === 1;
       for (let i = 0; i < 16; i++) {
         const t = T + i * step;
@@ -394,14 +512,21 @@ function build(s) {
         if (groove && s.drums.s[i] === 'x') ev.push({ t: t, k: 'snare' });
         if (s.drums.h[i] === 'x') ev.push({ t: t, k: 'hat', a: i % 4 === 0 ? 1 : 0.55 });
       }
-      if (!intro && k === 3) { [12, 14, 15].forEach(function (i) { ev.push({ t: T + i * step, k: 'snare' }); }); }
+      if (!intro && k === 3 && s.fill !== false) { [12, 14, 15].forEach(function (i) { ev.push({ t: T + i * step, k: 'snare' }); }); }
+
+      if (!intro && src.cm && src.cm[k]) {
+        src.cm[k].split(' ').forEach(function (tok) {
+          const p = tok.split(':').map(Number);
+          ev.push({ t: T + p[0] * step, k: 'voice', m: degMidi(s, p[1]), d: p[2] * step * 0.96 });
+        });
+      }
 
       if (!intro) {
         src.mel[k].split(' ').forEach(function (tok) {
           const p = tok.split(':').map(Number);
           const m = degMidi(s, p[1]);
           const t = T + p[0] * step;
-          mel.push({ t: t, m: m, d: p[2] * step, bar: k, tok: tok });
+          mel.push({ t: t, m: m, d: p[2] * step, bar: k, tok: tok, st: p[0], len: p[2], ch: ci.notes, bi: b });
           ev.push({ t: t, k: 'lead', m: m, d: p[2] * step * 0.96 });
         });
       }
@@ -414,8 +539,7 @@ function build(s) {
   chords.push(ce.name);
   ev.push({ t: Te, k: 'pad', notes: ce.notes, d: bar * 1.5 });
   ev.push({ t: Te, k: 'bass', m: ce.notes[0] - 12, d: bar });
-  ev.push({ t: Te, k: 'kick' });
-  ev.push({ t: Te, k: 'crash' });
+  if (s.fill !== false) { ev.push({ t: Te, k: 'kick' }); ev.push({ t: Te, k: 'crash' }); }
   ev.push({ t: Te, k: 'lead', m: degMidi(s, 7), d: bar * 0.9 });
 
   ev.sort(function (a, c) { return a.t - c.t; });
@@ -429,7 +553,61 @@ function build(s) {
     laneOf[m] = Math.min(3, Math.floor((before + cnt / 2) / mel.length * 4));
     before += cnt;
   });
-  const notes = mel.map(function (n) { return { t: n.t, lane: laneOf[n.m], m: n.m }; });
+  /* Chart notes. A note's lane starts from its pitch (low to high). A second pass then makes sure no
+     single lane is asked to fire faster than a finger can tap (repeats and trills become stairs across
+     the lanes). Long notes and accents also carry chord tones on other lanes, never more than three
+     keys at once, and only where the melody leaves room to breathe. */
+  const cfg = CHART[s.diff] || CHART.Normal;
+  const GAP = 0.28;
+  function laneAtPitch(m) {
+    let ln = 0;
+    for (let i = 0; i < uniq.length; i++) { if (uniq[i] <= m) ln = laneOf[uniq[i]]; else break; }
+    return ln;
+  }
+  const notes = [];
+  const last = [-9, -9, -9, -9];
+  let prevLane = -1, prevM = 0, dir = 1;
+  mel.forEach(function (n, idx) {
+    const pl = laneOf[n.m];
+    if (prevLane >= 0) { if (n.m > prevM) dir = 1; else if (n.m < prevM) dir = -1; }
+    let lane = pl, bestScore = 1e9;
+    for (let l = 0; l < 4; l++) {
+      const rest = n.t - last[l];
+      let sc = Math.abs(l - pl);
+      if (rest < GAP) sc += 10 + (GAP - rest) * 10;
+      if (l === prevLane) sc += 0.6;
+      if (prevLane >= 0 && l !== prevLane && (l - prevLane) * dir > 0) sc -= 0.35;
+      if (sc < bestScore) { bestScore = sc; lane = l; }
+    }
+    notes.push({ t: n.t, lane: lane, m: n.m });
+    last[lane] = n.t; prevLane = lane; prevM = n.m;
+
+    let extra = 0;
+    if (n.len >= 6) extra = cfg.long6;
+    else if (n.len >= 4) extra = cfg.long4;
+    else if (n.len >= 2 && n.st % 4 === 0) {
+      if (cfg.mid === 2 || (cfg.mid === 1 && (n.bi + n.st / 4) % 2 === 0)) extra = 1;
+    } else if (n.len < 2 && cfg.run && n.st % 8 === 0) extra = 1;
+    const nextGap = idx + 1 < mel.length ? mel[idx + 1].t - n.t : 9;
+    if (!extra || nextGap < 0.19) return;
+    const cands = n.ch.map(function (c) {
+      let p = c; while (p < n.m - 3) p += 12; while (p > n.m - 3) p -= 12; return p;
+    }).sort(function (x, y) { return y - x; });
+    const used = {}; used[lane] = true;
+    for (let e = 0; e < extra && e < cands.length; e++) {
+      const pref = laneAtPitch(cands[e]);
+      const order = [0, 1, 2, 3].sort(function (x, y) { return Math.abs(x - pref) - Math.abs(y - pref); });
+      for (let o = 0; o < order.length; o++) {
+        const ln = order[o];
+        if (!used[ln] && n.t - last[ln] >= GAP) {
+          used[ln] = true; last[ln] = n.t;
+          notes.push({ t: n.t, lane: ln, m: cands[e], chord: true });
+          break;
+        }
+      }
+    }
+  });
+  notes.sort(function (a, c) { return a.t - c.t; });
   const laneCounts = [0, 0, 0, 0];
   notes.forEach(function (n) { laneCounts[n.lane]++; });
 
@@ -454,13 +632,14 @@ function build(s) {
     good: { w: 0.13, pts: 40, acc: 0.4, label: 'GOOD', col: '#ffd98a' }
   };
   var W_GOOD = JUDGE.good.w;
-  var APPROACH = { slow: 1.9, normal: 1.45, fast: 1.05 };
+  var BASE_APPROACH = 1.45; /* seconds a note takes to fall at 100% */
   var LEAD_IN = 2.2;
 
   /* ---------- settings ---------- */
   var KEY = 'tetrachord:v1';
-  var st = { keys: 'song', speed: 'normal', offset: 0, best: {} };
+  var st = { keys: 'song', speed: 'normal', fall: null, offset: 0, best: {} };
   try { var raw = localStorage.getItem(KEY); if (raw) Object.assign(st, JSON.parse(raw)); } catch (e) {}
+  if (typeof st.fall !== 'number') st.fall = ({ slow: 70, normal: 100, fast: 150 })[st.speed] || 100;
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function keysFor(song) {
     if (st.keys === 'dfjk') return KEYSETS.dfjk;
@@ -541,8 +720,19 @@ function build(s) {
     });
     $('#offset').value = st.offset;
     $('#offsetVal').textContent = (st.offset > 0 ? '+' : '') + st.offset + ' ms';
+    $('#speed').value = st.fall; $('#speedVal').textContent = st.fall + '%';
+    $('#speedP').value = st.fall; $('#speedPVal').textContent = st.fall + '%';
+    document.querySelectorAll('[data-fall]').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(+b.dataset.fall === st.fall));
+    });
     renderKeys();
   }
+  function setFall(v) { st.fall = Math.max(50, Math.min(500, Math.round(v / 5) * 5)); save(); syncSettings(); }
+  $('#speed').addEventListener('input', function (e) { setFall(+e.target.value); });
+  $('#speedP').addEventListener('input', function (e) { setFall(+e.target.value); });
+  document.querySelectorAll('[data-fall]').forEach(function (b) {
+    b.addEventListener('click', function () { setFall(+b.dataset.fall); });
+  });
   document.querySelectorAll('[data-setting]').forEach(function (b) {
     b.addEventListener('click', function () { st[b.dataset.setting] = b.dataset.value; save(); syncSettings(); });
   });
@@ -605,6 +795,15 @@ function build(s) {
         song.lead.layers.forEach(function (L) {
           envOsc(L.w, mtof(e.m) * L.m, L.det, when, when + e.d, song.lead.gain * L.g, song.lead.atk, song.lead.sus, song.lead.rel, song.lead.cut);
         });
+        break;
+      case 'voice': {
+        var V = song.voice || {};
+        envOsc(V.w || 'triangle', mtof(e.m), 0, when, when + e.d, V.gain || 0.04, 0.01, 0.6, 0.1, V.cut || 2400);
+        break;
+      }
+      case 'arp':
+        envOsc('triangle', mtof(e.m), 0, when, when + e.d, e.g || 0.06, 0.003, 0.2, 0.2, 2600);
+        envOsc('sine', mtof(e.m) * 2, 0, when, when + e.d * 0.6, (e.g || 0.06) * 0.3, 0.003, 0.2, 0.15, 3000);
         break;
       case 'pad':
         e.notes.forEach(function (m) { envOsc('triangle', mtof(m), 0, when, when + e.d, song.padGain, 0.12, 0.8, 0.25, 1800); });
@@ -746,6 +945,12 @@ function build(s) {
   window.addEventListener('keydown', function (e) {
     if (!G || !G.running) return;
     if (e.code === 'Escape') { e.preventDefault(); if (G.paused) resume(); else pause(); return; }
+    if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+      e.preventDefault();
+      setFall(st.fall + (e.code === 'BracketRight' ? 10 : -10));
+      G.speedT = performance.now();
+      return;
+    }
     if (e.repeat) { if (keymap[e.code] !== undefined) e.preventDefault(); return; }
     var l = keymap[e.code];
     if (l !== undefined) { e.preventDefault(); press(l); }
@@ -901,7 +1106,7 @@ function build(s) {
     c.fillRect(x0, hitY - 1.5, laneW * 4, 3);
 
     /* notes */
-    var approach = APPROACH[st.speed] || APPROACH.normal;
+    var approach = BASE_APPROACH / (st.fall / 100);
     var pps = (hitY + 10) / approach;
     var nw = laneW - 14, nh = 22;
     for (l = 0; l < 4; l++) {
@@ -991,6 +1196,11 @@ function build(s) {
       c.fillText(String(G.combo), W / 2, 140);
       c.fillStyle = 'rgba(237,236,246,0.55)'; c.font = fm(11);
       c.fillText('COMBO', W / 2, 160);
+    }
+
+    if (G.speedT && performance.now() - G.speedT < 1300) {
+      c.fillStyle = 'rgba(237,236,246,0.75)'; c.font = fm(12); c.textAlign = 'center';
+      c.fillText('FALL SPEED ' + st.fall + '%', W / 2, 184);
     }
 
     if (now < 0) {
