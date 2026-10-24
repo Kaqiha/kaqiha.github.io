@@ -127,7 +127,7 @@ input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 100%
     <header>
       <h1>Tetrachord</h1>
       <div class="lanebar" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <p class="lede">Four keys, seven original songs. Each lane is a pitch band, low to high, so your fingers play the melody. Longer notes and accents arrive as chords of two or three keys at once. The bar under each song shows how its notes spread across the lanes.</p>
+      <p class="lede">Four keys, eight original songs. Each lane is a pitch band, low to high, so your fingers play the melody. Longer notes and accents arrive as chords of two or three keys at once. The bar under each song shows how its notes spread across the lanes.</p>
     </header>
 
     <div id="songs" role="radiogroup" aria-label="Choose a song"></div>
@@ -212,6 +212,7 @@ const HARM = [0, 2, 3, 5, 7, 8, 11];
 const PC = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
 /* How many chord tones ride along with melody notes, by song difficulty. */
 const CHART = {
+  Insane:  { long6: 0, long4: 0, mid: 0, run: 0 },
   Easy:    { long6: 2, long4: 1, mid: 0, run: 0 },
   Normal:  { long6: 2, long4: 1, mid: 1, run: 0 },
   Hard:    { long6: 2, long4: 2, mid: 1, run: 1 },
@@ -225,6 +226,12 @@ function seq16(a) { return a.map(function (d, i) { return i + ':' + d + ':1'; })
 function tp(st, a) { return a.map(function (d, i) { return (st + i * 4 / 3) + ':' + d + ':1.3333'; }).join(' '); }
 function zig(x) { return [x, x + 2, x + 1, x + 3, x + 2, x + 4, x + 3, x + 5]; }
 function zag(x) { return [x, x - 2, x - 1, x - 3, x - 2, x - 4, x - 3, x - 5]; }
+/* B lays out one bar for a hand-placed chart: sixteen slots, each a lane digit ('2'), a chord of lanes ('03')
+   or a rest ('-'). Lane 0 to 3 plays the chord's low, mid, high and octave tone, so stairs are arpeggios. */
+function B(c, str) {
+  const base = [c + 7, c + 9, c + 11, c + 14];
+  return str.split(' ').map(function (t, i) { return t === '-' ? '' : i + ':' + base[+t[0]] + ':1:' + t; }).filter(Boolean).join(' ');
+}
 
 const KEYSETS = {
   dfjk:   { codes: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], labels: ['D', 'F', 'J', 'K'] },
@@ -462,6 +469,46 @@ const SONGS = [
         seq16([11, 13, 15, 18, 15, 13, 11, 8, 11, 13, 15, 18, 20, 18, 15, 13]),
         '0:14:2 2:11:2 4:9:2 6:7:2 8:4:4 12:0:4'] }
     }
+  },
+  {
+    /* Finale. Lanes are placed by hand, not by pitch: fast stairs, two-finger trills, and double stairs
+       that alternate pairs, so no lane is ever hit twice in a row. */
+    id: 'redline-rush', title: 'Redline Rush', feel: 'maximum overdrive finale', keyName: 'B minor',
+    bpm: 170, root: 59, scale: MIN, diff: 'Insane', explicit: true,
+    keys: { codes: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], labels: ['D', 'F', 'J', 'K'] },
+    pal: { lanes: ['#ff2d55', '#ff9500', '#ffe629', '#2dffb3'], bg: ['#2a0a12', '#0a0306'], accent: '#ff2d55' },
+    lead: { layers: [{ w: 'sawtooth', m: 1, det: -9, g: 1 }, { w: 'sawtooth', m: 1, det: 9, g: 1 }, { w: 'square', m: 2, det: 0, g: 0.2 }], gain: 0.03, atk: 0.002, sus: 0.4, rel: 0.04, cut: 5200 },
+    padGain: 0.02, bassWave: 'sawtooth', bassGain: 0.17, bassLen: 1.2,
+    bass: '.x..x..x.x..x..x',
+    drums: { k: 'x...x...x...x...', s: '....x.......x...', h: 'x.x.x.x.x.x.x.x.' },
+    form: ['i', 'A', 'B', 'C', 'D', 'B', 'C', 'A', 'E'],
+    sections: {
+      A: { ch: [0, 5, 2, 6], mel: [
+        B(0, '0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3'),
+        B(5, '2 1 0 3 2 1 0 3 2 1 0 3 2 1 0 3'),
+        B(2, '2 1 0 3 0 1 2 3 0 1 2 3 2 1 0 3'),
+        B(6, '2 1 0 3 2 1 0 3 2 1 0 3 - - 03 -')] },
+      B: { ch: [5, 2, 6, 0], mel: [
+        B(5, '1 2 1 2 1 2 1 2 0 3 0 3 0 3 0 3'),
+        B(2, '1 2 1 2 0 3 0 3 1 2 1 2 0 3 0 3'),
+        B(6, '0 1 0 1 2 3 2 3 0 1 0 1 2 3 2 3'),
+        B(0, '2 3 2 3 0 1 0 1 2 3 2 3 - - 03 -')] },
+      C: { ch: [0, 6, 5, 6], mel: [
+        B(0, '01 - 23 - 01 - 23 - 01 - 23 - 01 - 23 -'),
+        B(6, '02 - 13 - 02 - 13 - 02 - 13 - 02 - 13 -'),
+        B(5, '01 - 23 - 01 23 01 23 - 02 13 - 02 13 02 13'),
+        B(6, '02 - 13 - 02 - 13 - 12 03 12 03 - - 2 -')] },
+      D: { ch: [3, 5, 6, 0], mel: [
+        B(3, '0 1 2 3 01 - 23 - 3 2 1 0 23 - 01 -'),
+        B(5, '2 1 0 3 12 - 03 - 0 1 2 - 03 - 12 -'),
+        B(6, '1 2 1 2 03 - 03 - 1 2 1 2 03 - 03 -'),
+        B(0, '0 1 2 3 0 1 2 3 12 03 12 03 - - 03 -')] },
+      E: { ch: [0, 3, 6, 4], mel: [
+        B(0, '0 1 2 3 0 1 2 3 01 23 01 23 - 02 13 02'),
+        B(3, '3 2 1 0 3 2 1 0 12 03 12 03 - 13 02 13'),
+        B(6, '2 1 2 1 0 3 0 3 2 1 2 1 03 12 03 12'),
+        B(4, '0 1 2 3 0 1 2 3 0 1 2 3 1 2 03 -')] }
+    }
   }
 ];
 
@@ -523,10 +570,11 @@ function build(s) {
 
       if (!intro) {
         src.mel[k].split(' ').forEach(function (tok) {
-          const p = tok.split(':').map(Number);
+          const parts = tok.split(':');
+          const p = parts.map(Number);
           const m = degMidi(s, p[1]);
           const t = T + p[0] * step;
-          mel.push({ t: t, m: m, d: p[2] * step, bar: k, tok: tok, st: p[0], len: p[2], ch: ci.notes, bi: b });
+          mel.push({ t: t, m: m, d: p[2] * step, bar: k, tok: tok, lanes: parts[3], st: p[0], len: p[2], ch: ci.notes, bi: b });
           ev.push({ t: t, k: 'lead', m: m, d: p[2] * step * 0.96 });
         });
       }
@@ -568,6 +616,10 @@ function build(s) {
   const last = [-9, -9, -9, -9];
   let prevLane = -1, prevM = 0, dir = 1;
   mel.forEach(function (n, idx) {
+    if (s.explicit && n.lanes) {
+      n.lanes.split('').forEach(function (ch, ix) { notes.push({ t: n.t, lane: +ch, m: n.m, chord: ix > 0 }); });
+      return;
+    }
     const pl = laneOf[n.m];
     if (prevLane >= 0) { if (n.m > prevM) dir = 1; else if (n.m < prevM) dir = -1; }
     let lane = pl, bestScore = 1e9;
