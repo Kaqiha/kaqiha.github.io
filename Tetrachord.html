@@ -180,6 +180,31 @@ body {
   .online-result-meta { margin-top:5px; color:var(--muted); font-size:12px; line-height:1.5; }
   .online-result-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
   .online-result-actions a { display:inline-flex; align-items:center; justify-content:center; padding:8px 11px; border:1px solid var(--line); border-radius:8px; color:var(--text); font-size:12px; text-decoration:none; }
+  .online-result-actions button { padding:8px 11px; border:1px solid var(--line); border-radius:8px; color:var(--text); background:transparent; font:inherit; font-size:12px; cursor:pointer; }
+  .online-result-actions button.ol-import { border-color:rgba(123,227,166,.5); color:var(--l3); }
+  .online-result-actions button.playing { border-color:var(--l1); color:var(--l1); }
+  .online-result-actions button:disabled { opacity:.55; cursor:progress; }
+  .online-result-state { margin-top:8px; font-size:12px; color:var(--muted); min-height:0; }
+  .online-result-state.bad { color:#ff7a90; }
+  .online-search-form select { display:block; box-sizing:border-box; width:100%; border:1px solid var(--line); border-radius:10px; padding:11px 12px; color:var(--text); background:var(--ink); font:inherit; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .chips .chip { border:1px solid var(--line); border-radius:999px; padding:4px 11px; background:transparent; color:var(--muted); font:inherit; font-size:12px; cursor:pointer; }
+  .ol-more { width:100%; margin-top:4px; }
+  #searchPage.dropping { outline:2px dashed var(--l1); outline-offset:-6px; }
+
+  .help-btn { width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:var(--ink-2); color:var(--text); font:inherit; font-weight:800; cursor:pointer; }
+  .help-btn:hover { border-color:var(--l1); color:var(--l1); }
+  .help-overlay { position:fixed; inset:0; z-index:50; display:grid; place-items:center; padding:16px; background:rgba(5,6,12,.72); }
+  .help-overlay[hidden] { display:none; }
+  .help-card { width:min(560px,100%); max-height:88vh; overflow:auto; border:1px solid var(--line); border-radius:16px; padding:18px; background:var(--ink-2); color:var(--text); line-height:1.6; font-size:14px; }
+  .help-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; }
+  .help-close { border:0; background:transparent; color:var(--muted); font-size:18px; cursor:pointer; }
+  .help-card ol { margin:8px 0; padding-left:20px; }
+  .help-tabs { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 8px; }
+  .help-tabs button { border:1px solid var(--line); border-radius:999px; padding:6px 12px; background:transparent; color:var(--muted); font:inherit; font-size:12px; cursor:pointer; }
+  .help-tabs button[aria-selected="true"] { border-color:var(--l1); color:var(--l1); }
+  .help-panel { border:1px solid var(--line); border-radius:12px; padding:6px 10px; background:var(--ink); }
+  .help-tip { margin:12px 0 0; color:var(--muted); font-size:12px; }
   .online-result-actions a.download-midi { border-color:rgba(123,227,166,.5); color:var(--l3); }
   .search-empty { padding:22px; border:1px dashed var(--line); border-radius:12px; color:var(--muted); line-height:1.6; }
   .search-import { display:flex; flex-direction:column; align-items:stretch; gap:12px; }
@@ -199,7 +224,7 @@ body {
     <div class="home-options">
       <button class="home-option" type="button" data-page="demo"><strong>Demo</strong><span>Play built-in songs and MIDI transcriptions →</span></button>
       <button class="home-option" type="button" data-page="custom"><strong>Custom</strong><span>Import your own MIDI file and play it →</span></button>
-      <button class="home-option" type="button" data-page="search"><strong>Search</strong><span>Find songs online · Not implemented</span></button>
+      <button class="home-option" type="button" data-page="search"><strong>Search</strong><span>Find songs online · Search & import</span></button>
     </div>
   </section>
 
@@ -247,29 +272,68 @@ body {
   </section>
 
   <section id="searchPage" hidden>
-    <div class="section-nav"><button class="ghost" type="button" id="searchHome">← Home</button><strong>Search Online Sequencer</strong><span></span></div>
+    <div class="section-nav"><button class="ghost" type="button" id="searchHome">← Home</button><strong>Find songs</strong><button class="help-btn" type="button" id="helpBtn" aria-haspopup="dialog" aria-controls="helpDialog" aria-label="How to download a song">?</button></div>
     <div class="search-intro">
-      <p>Search sequences on Online Sequencer. Results are sorted by popularity; choose a sequence to listen or download its MIDI.</p>
+      <p>Search Online Sequencer, open a song, export its MIDI, then import it into Custom. Tap <b>?</b> (top right) for step-by-step instructions on Windows, Mac, iPhone/iPad and Android.</p>
       <form id="onlineSearchForm" class="online-search-form">
-        <input id="onlineSearchQuery" type="search" placeholder="Enter a song or artist…" aria-label="Search Online Sequencer" required maxlength="120">
+        <input id="onlineSearchQuery" type="search" placeholder="Song, artist, or paste a sequence link…" aria-label="Search Online Sequencer" required maxlength="200" autocomplete="off">
         <button class="primary" type="submit">Search songs</button>
       </form>
       <div class="search-tools">
         <a id="openOnlineResults" href="https://onlinesequencer.net/sequences?sort=2" target="_blank" rel="noopener noreferrer">Open results on Online Sequencer ↗</a>
-        <span>Top 10 · sorted by plays</span>
+        <span>Best match first · then plays</span>
       </div>
+      <div id="onlineRecent" class="chips"></div>
       <p id="onlineSearchStatus" role="status" aria-live="polite">Enter a search term to find matching sequences.</p>
     </div>
     <div class="search-results-wrap">
       <div class="search-results-heading"><strong>Search results</strong><span id="onlineResultCount">No results yet</span></div>
-      <div id="onlineResultList" class="online-result-list"><div class="search-empty">Your top 10 matching sequences will appear here.</div></div>
+      <div id="onlineResultList" class="online-result-list"><div class="search-empty">Matching sequences will appear here.</div></div>
     </div>
     <div class="search-import">
-      <div><strong>Already have a MIDI file?</strong><p>Import a downloaded <b>.mid</b> or <b>.midi</b> file directly into Custom.</p></div>
+      <div><strong>Downloaded a MIDI file?</strong><p>Import the <b>.mid</b> file into Custom to play it.</p></div>
       <button id="searchImportMidi" class="primary" type="button">Import MIDI into Custom</button>
     </div>
-    <p class="search-note">Online Sequencer does not provide a documented public search API. This page attempts to read its public results; if the browser or site blocks the request, use “Open results” and download the MIDI from the sequence page.</p>
+    <p class="search-note">Search results come from Online Sequencer’s public pages through relay services and may occasionally fail; try again, or open Online Sequencer directly.</p>
   </section>
+
+<div id="helpDialog" class="help-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="help-card">
+    <div class="help-head"><strong id="helpTitle">How to get a song into Tetrachord</strong><button class="help-close" type="button" id="helpClose" aria-label="Close">✕</button></div>
+    <ol class="help-common">
+      <li>Search for a song here and tap <b>View on site</b> to open it on Online Sequencer.</li>
+      <li>On that page, open the menu and choose <b>Export MIDI</b>. Your device saves a <b>.mid</b> file.</li>
+      <li>Come back to Tetrachord, open <b>Custom</b> (or the button below the results) and choose that file. The song loads and is ready to play.</li>
+    </ol>
+    <div class="help-tabs" role="tablist">
+      <button type="button" role="tab" data-os="win" aria-selected="true">Windows</button>
+      <button type="button" role="tab" data-os="mac" aria-selected="false">Mac</button>
+      <button type="button" role="tab" data-os="ios" aria-selected="false">iPhone / iPad</button>
+      <button type="button" role="tab" data-os="android" aria-selected="false">Android</button>
+    </div>
+    <div class="help-panel" data-os-panel="win"><ol>
+      <li>Open the sequence in Chrome, Edge or Firefox.</li>
+      <li>Use the menu at the top of the editor and click <b>Export MIDI</b>.</li>
+      <li>The file appears in your <b>Downloads</b> folder (click it in the browser’s download bar).</li>
+      <li>In Tetrachord, press <b>Import MIDI into Custom</b> and pick it from Downloads.</li></ol></div>
+    <div class="help-panel" data-os-panel="mac" hidden><ol>
+      <li>Open the sequence in Safari or Chrome.</li>
+      <li>Use the menu at the top of the editor and click <b>Export MIDI</b>.</li>
+      <li>Find the file in <b>Downloads</b> (Safari’s download arrow, or Finder → Downloads).</li>
+      <li>In Tetrachord, press <b>Import MIDI into Custom</b> and pick it.</li></ol></div>
+    <div class="help-panel" data-os-panel="ios" hidden><ol>
+      <li>Open the sequence in Safari. Tap the menu (☰) in the editor, then <b>Export MIDI</b>.</li>
+      <li>When Safari asks, tap <b>Download</b>. The file is saved to <b>Files → Downloads</b>.</li>
+      <li>In Tetrachord, press <b>Import MIDI into Custom</b>, choose <b>Browse</b>, then pick the file from Downloads.</li>
+      <li>If the export opens a preview instead, use <b>Share → Save to Files</b>, then import it from Files.</li></ol></div>
+    <div class="help-panel" data-os-panel="android" hidden><ol>
+      <li>Open the sequence in Chrome. Tap the menu (☰) in the editor, then <b>Export MIDI</b>.</li>
+      <li>Chrome saves the <b>.mid</b> to your <b>Downloads</b> folder (tap <b>Open</b> or check the Files app).</li>
+      <li>In Tetrachord, press <b>Import MIDI into Custom</b>, then choose the file from <b>Downloads</b>.</li>
+      <li>If the file picker greys it out, switch to the <b>Files/Downloads</b> view instead of Recent.</li></ol></div>
+    <p class="help-tip">Tip: some sequences are long or use many instruments. Pick <b>Medium</b> or <b>Insane</b> generation in Custom before loading.</p>
+  </div>
+</div>
 
   <section id="game" hidden>
     <div class="topbar">
@@ -1174,30 +1238,35 @@ function build(s) {
     if(ti<0||li<0)throw new Error('CSV must include time_ms and lane columns.');
     return lines.slice(1).map(function(line,idx){var p=line.split(','),t=Number(p[ti]),l=Number(p[li]),d=di<0?0:Number(p[di]),m=mi<0?0:Number(p[mi]);if(!isFinite(t)||!isFinite(l)||l<0||l>3||Math.floor(l)!==l)throw new Error('Invalid time or lane on CSV row '+(idx+2)+'.');return {t:t/1000,lane:l,e:Math.max(0,d/1000),m:m};}).sort(function(a,b){return a.t-b.t;});
   }
-  $('#customLoad').addEventListener('click', async function(){
-    var mf=$('#customMidi').files[0], cf=$('#customCsv').files[0], status=$('#customStatus');
-    if(!mf){status.textContent='Choose a MIDI file first.';return;}
-    try{
-      status.textContent='Reading MIDI…';var parsed=parseMidi(await mf.arrayBuffer()), chart;
+  function loadCustomSong(buf,name,csvText){
+    var status=$('#customStatus');
+    {
+      status.textContent='Reading MIDI…';var parsed=parseMidi(buf), chart;
       var mode=$('#customMode').value;chSetMode(mode);
-      if(cf) chart=parseKeyCsv(await cf.text(),parsed.notes); else chart=generatedLaneMap(parsed.notes);
+      if(csvText) chart=parseKeyCsv(csvText,parsed.notes); else chart=generatedLaneMap(parsed.notes);
       chart=enforceChartRules(chart);
       if(!chart.length)throw new Error('The keymap contains no notes.');
       // MIDI channel 10 (zero-based channel 9) is percussion: render its notes as drums,
       // while keeping those same notes in the generated/custom chart below.
       var audio=parsed.notes.map(function(n){return {t:n.t,k:n.drum?'drum':'lead',m:n.m,d:n.d,v:.35+.9*n.v/127};});
       var laneCounts=[0,0,0,0];chart.forEach(function(n){laneCounts[n.lane]++;});
-      var bpm=120, song={id:'custom-'+Date.now(),sec:'custom',title:mf.name.replace(/\.midi?$/i,''),feel:cf?'custom CSV keymap':(mode==='insane'?'insane: holds, chords & spam':'medium: trills, stairs & diamonds'),keyName:'Imported MIDI',bpm:bpm,root:60,scale:MAJ,diff:'Custom',keys:KEYSETS.dfjk,pal:{lanes:['#ff7a90','#ffb04f','#f7e35c','#7be3a6'],bg:['#201827','#090a10'],accent:'#ffb04f'},lead:{layers:[{w:'triangle',m:1,det:0,g:1}],gain:.05,atk:.004,sus:.4,rel:.1,cut:4200},custom:true};
+      var bpm=120, song={id:'custom-'+Date.now(),sec:'custom',title:name.replace(/\.midi?$/i,''),feel:csvText?'custom CSV keymap':(mode==='insane'?'insane: holds, chords & spam':'medium: trills, stairs & diamonds'),keyName:'Imported MIDI',bpm:bpm,root:60,scale:MAJ,diff:'Custom',keys:KEYSETS.dfjk,pal:{lanes:['#ff7a90','#ffb04f','#f7e35c','#7be3a6'],bg:['#201827','#090a10'],accent:'#ffb04f'},lead:{layers:[{w:'triangle',m:1,det:0,g:1}],gain:.05,atk:.004,sus:.4,rel:.1,cut:4200},custom:true};
       song.customEvents=audio; song.customNotes=chart; song.customLen=Math.max(parsed.duration,chart[chart.length-1].t+.5); song.chords=['CUSTOM'];
       var b={ev:audio,notes:chart.map(function(n){return {t:n.t,lane:n.lane,e:n.e?n.t+n.e:0,m:n.m};}),chords:['CUSTOM'],bar:2,step:.125,total:song.customLen,laneCounts:laneCounts,uniq:[],mel:[]};
       if(customSongIndex>=0){SONGS.splice(customSongIndex,1);BUILT.splice(customSongIndex,1);}
       customSongIndex=SONGS.length;SONGS.push(song);BUILT.push(b);sel=customSongIndex;
       var old=songsEl.querySelector('[data-custom-song]');if(old)old.remove();
       var btn=document.createElement('button');btn.type='button';btn.className='song';btn.dataset.i=customSongIndex;btn.dataset.customSong='1';btn.setAttribute('role','radio');
-      btn.innerHTML='<span class="s-top"><span><span class="s-title"></span><span class="s-meta">Imported MIDI · '+(cf?'CSV keymap':(mode==='insane'?'Insane generation':'Medium generation'))+'</span></span><span class="s-diff">'+(mode==='insane'?'INSANE':'CUSTOM')+'</span></span><span class="s-bottom"><span class="keys" data-keys></span><span class="s-stat">'+chart.length+' notes · '+fmtTime(b.total)+'</span></span>';
+      btn.innerHTML='<span class="s-top"><span><span class="s-title"></span><span class="s-meta">Imported MIDI · '+(csvText?'CSV keymap':(mode==='insane'?'Insane generation':'Medium generation'))+'</span></span><span class="s-diff">'+(mode==='insane'?'INSANE':'CUSTOM')+'</span></span><span class="s-bottom"><span class="keys" data-keys></span><span class="s-stat">'+chart.length+' notes · '+fmtTime(b.total)+'</span></span>';
       btn.querySelector('.s-title').textContent=song.title;btn.addEventListener('click',function(){select(customSongIndex);});customPanel.before(btn);
-      customChartRows=chart;$('#exportMap').disabled=false;$('#customStatus').textContent='Loaded '+mf.name+' — '+parsed.notes.length+' MIDI notes, '+chart.length+' chart notes. Press Play when ready.';renderKeys();select(customSongIndex);openPage('custom');
-    }catch(err){status.textContent='Could not load file: '+err.message;}
+      customChartRows=chart;$('#exportMap').disabled=false;$('#customStatus').textContent='Loaded '+name+' — '+parsed.notes.length+' MIDI notes, '+chart.length+' chart notes. Press Play when ready.';renderKeys();select(customSongIndex);openPage('custom');
+    }
+  }
+  $('#customLoad').addEventListener('click', async function(){
+    var mf=$('#customMidi').files[0], cf=$('#customCsv').files[0], status=$('#customStatus');
+    if(!mf){status.textContent='Choose a MIDI file first.';return;}
+    try{ loadCustomSong(await mf.arrayBuffer(), mf.name, cf?await cf.text():null); }
+    catch(err){status.textContent='Could not load file: '+err.message;}
   });
   $('#exportMap').addEventListener('click',function(){if(!customChartRows.length)return;var rows=['time_ms,lane,duration_ms,midi_note'];customChartRows.forEach(function(n){rows.push([Math.round(n.t*1000),n.lane,Math.round((n.e||0)*1000),n.m||''].join(','));});downloadText('tetrachord-keymap.csv',rows.join('\n'),'text/csv;charset=utf-8;');});
 
@@ -1283,102 +1352,175 @@ function build(s) {
   $('#backHome').addEventListener('click', function () { show('home'); });
   $('#searchHome').addEventListener('click', function () { show('home'); });
 
-    function onlineSearchUrl() {
-      var q = $('#onlineSearchQuery').value.trim();
-      return 'https://onlinesequencer.net/sequences?sort=2' + (q ? '&search=' + encodeURIComponent(q) : '');
-    }
+    /* ---------- Online Sequencer search + in-page listen / import ---------- */
+    var OS_ORIGIN = 'https://onlinesequencer.net';
+    var CORS_PROXIES = [
+      function (u) { return u; },                                                              // direct (works if the site allows it)
+      function (u) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
+      function (u) { return 'https://corsproxy.io/?' + encodeURIComponent(u); },
+      function (u) { return 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u); }
+    ];
+    var searchCache = {}, midiCache = {}, lastResults = [], shownCount = 10, lastQuery = '';
     function setOnlineSearchStatus(message) { $('#onlineSearchStatus').textContent = message; }
-    function safeText(value) { return String(value || '').replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
-    function getSequenceId(url) {
-      try { var u = new URL(url, 'https://onlinesequencer.net'); var m = u.pathname.match(/^\/(\d+)\/?$/); return m ? m[1] : null; } catch (_) { return null; }
+    function safeText(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+    function onlineSearchUrl(q) { return OS_ORIGIN + '/sequences?sort=2' + (q ? '&search=' + encodeURIComponent(q) : ''); }
+    function fetchTimeout(url, ms, opts) {
+      var ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, ms);
+      return fetch(url, Object.assign({signal: ctl.signal}, opts || {})).finally(function () { clearTimeout(timer); });
+    }
+    // Try the site directly, then each public CORS proxy, until one returns something acceptable.
+    // Race the direct request and every relay at once; first acceptable answer wins, the rest are cancelled.
+    function fetchVia(url, kind, accept) {
+      return new Promise(function (resolve, reject) {
+        var ctls = [], pending = CORS_PROXIES.length, done = false, lastErr = null;
+        CORS_PROXIES.forEach(function (mk) {
+          var ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, 9000);
+          ctls.push(ctl);
+          fetch(mk(url), {signal: ctl.signal}).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return kind === 'buffer' ? r.arrayBuffer() : r.text();
+          }).then(function (body) {
+            if (accept && !accept(body)) throw new Error('Unexpected response');
+            if (done) return; done = true; ctls.forEach(function (c) { try { c.abort(); } catch (_) {} }); resolve(body);
+          }).catch(function (e) { lastErr = e; }).finally(function () {
+            clearTimeout(timer);
+            if (!done && --pending === 0) reject(lastErr || new Error('Network unavailable'));
+          });
+        });
+      });
+    }
+    function isMidiBuffer(buf) { if (!buf || buf.byteLength < 14) return false; var u = new Uint8Array(buf, 0, 4); return u[0] === 0x4D && u[1] === 0x54 && u[2] === 0x68 && u[3] === 0x64; }
+    function seqIdFromUrl(url) {
+      var m = String(url || '').match(/^(?:https?:\/\/(?:www\.)?onlinesequencer\.net)?\/(\d{3,})\/?(?:[?#].*)?$/i);
+      return m ? m[1] : null;
+    }
+    function toNumber(s) { return s ? Number(String(s).replace(/,/g, '')) : null; }
+    function parseHtmlResults(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html'), out = [], seen = {};
+      doc.querySelectorAll('a[href]').forEach(function (a) {
+        var id = seqIdFromUrl(a.getAttribute('href'));
+        if (!id) return;
+        var title = (a.getAttribute('title') || a.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!title) { var img = a.querySelector('img[alt]'); if (img) title = img.getAttribute('alt').trim(); }
+        var box = a.closest('li,tr,article,.sequence,.item,div') || a.parentElement;
+        var info = box ? box.textContent.replace(/\s+/g, ' ').trim().slice(0, 400) : '';
+        var rec = seen[id];
+        if (!rec) { rec = seen[id] = {id: id, title: '', url: OS_ORIGIN + '/' + id, creator: '', plays: null, duration: null}; out.push(rec); }
+        if (title && (title.length > rec.title.length) && !/^\d+$/.test(title)) rec.title = title;
+        var by = info.match(/\bby\s+([^\s·|][^·|]{0,32}?)(?=\s{2,}|\s\d|\s*[·|]|$)/i);
+        if (by && !rec.creator) rec.creator = by[1].trim();
+        var dur = info.match(/\b(\d{1,2}:\d{2})\b/); if (dur && !rec.duration) rec.duration = dur[1];
+        var pl = info.match(/([\d,]+)\s*(?:plays|views)/i); if (pl && rec.plays == null) rec.plays = toNumber(pl[1]);
+      });
+      return out.filter(function (r) { return r.title; });
     }
     function parseSequenceResults(markdown) {
       var lines = markdown.split(/\r?\n/), results = [], seen = {};
       for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].trim();
-        var match = line.match(/^\[(.+?)\]\((https?:\/\/onlinesequencer\.net\/\d+\/?)(?:\s+"[^"]*")?\)/i);
+        var match = lines[i].trim().match(/^\[(.+?)\]\((https?:\/\/onlinesequencer\.net\/\d+\/?)(?:\s+"[^"]*")?\)/i);
         if (!match) continue;
-        var id = getSequenceId(match[2]);
+        var id = seqIdFromUrl(match[2]);
         if (!id || seen[id]) continue;
-        // Only keep links in the sequence-listing section, not navigation links.
         var context = lines.slice(i + 1, Math.min(lines.length, i + 7)).join(' ');
-        var creatorMatch = context.match(/by\s+\[([^\]]+)\]/i);
+        var creatorMatch = context.match(/by\s+\[([^\]]+)\]/i), durationMatch = context.match(/\b(\d{1,2}:\d{2})\b/);
         var playsMatch = context.match(/(?:^|\s)([\d,]+)\s*(?:plays|views)\b/i);
-        var durationMatch = context.match(/\b(\d{1,2}:\d{2})\b/);
-        // The sequence listing displays the play count as the first numeric stat after duration, without a label.
         if (!playsMatch && durationMatch) {
-          var afterDuration = context.slice(context.indexOf(durationMatch[0]) + durationMatch[0].length);
-          var statMatch = afterDuration.match(/(?:^|\s)([\d,]+)(?=\s|$)/);
-          if (statMatch) playsMatch = statMatch;
+          var after = context.slice(context.indexOf(durationMatch[0]) + durationMatch[0].length);
+          playsMatch = after.match(/(?:^|\s)([\d,]+)(?=\s|$)/);
         }
-        results.push({id:id, title:match[1].replace(/\\\*/g,'*'), url:'https://onlinesequencer.net/'+id, creator:creatorMatch ? creatorMatch[1] : 'Online Sequencer creator', plays:playsMatch ? Number(playsMatch[1].replace(/,/g,'')) : null, duration:durationMatch ? durationMatch[1] : null});
+        results.push({id: id, title: match[1].replace(/\\\*/g, '*'), url: OS_ORIGIN + '/' + id, creator: creatorMatch ? creatorMatch[1] : '', plays: playsMatch ? toNumber(playsMatch[1]) : null, duration: durationMatch ? durationMatch[1] : null});
         seen[id] = true;
-        if (results.length >= 10) break;
+        if (results.length >= 40) break;
       }
       return results;
     }
-    async function findMidiUrl(sequenceUrl) {
-      // Jina Reader converts the public sequence page to text and exposes the site's own MIDI link when available.
-      var readerUrl = 'https://r.jina.ai/' + sequenceUrl;
-      var response = await fetch(readerUrl, {headers:{'Accept':'text/plain'}});
-      if (!response.ok) throw new Error('Could not inspect MIDI link');
-      var body = await response.text();
-      var patterns = [
-        /\[Download\s+\.mid\]\((https?:\/\/[^)]+)\)/i,
-        /\[Download\s+MIDI\]\((https?:\/\/[^)]+)\)/i,
-        /href=["']([^"']+\.mid(?:\?[^"']*)?)["']/i
-      ];
-      for (var i=0;i<patterns.length;i++) { var m=body.match(patterns[i]); if(m) return new URL(m[1], sequenceUrl).href; }
-      return null;
+    // Rank by how well the title matches the query, then popularity.
+    function rankResults(results, q) {
+      var phrase = q.toLowerCase().trim(), tokens = phrase.split(/[\s\-_,.]+/).filter(Boolean);
+      return results.map(function (r, idx) {
+        var t = r.title.toLowerCase(), hit = tokens.filter(function (w) { return t.indexOf(w) >= 0; }).length;
+        var score = (t.indexOf(phrase) >= 0 ? 3 : 0) + (tokens.length ? 2 * hit / tokens.length : 0) + Math.log10((r.plays || 0) + 1) * 0.35 - idx * 0.01;
+        return {r: r, score: score};
+      }).sort(function (a, b) { return b.score - a.score; }).map(function (x) { return x.r; });
     }
+    async function searchOnline(q) {
+      var key = q.toLowerCase();
+      if (searchCache[key]) return searchCache[key];
+      var direct = seqIdFromUrl(q.replace(/^\s+|\s+$/g, '')) || (/^\d{3,}$/.test(q) ? q : null);
+      var res;
+      if (direct) res = [{id: direct, title: 'Sequence #' + direct, url: OS_ORIGIN + '/' + direct, creator: '', plays: null, duration: null}];
+      else {
+        var target = onlineSearchUrl(q), results = [];
+        var htmlP = fetchVia(target, 'text', function (h) { return /<a[\s>]/i.test(h); }).then(parseHtmlResults).catch(function () { return []; });
+        var mdP = fetchVia('https://r.jina.ai/' + target, 'text').then(parseSequenceResults).catch(function () { return []; });
+        results = await htmlP;
+        if (!results.length) results = await mdP;
+        if (!results.length) throw new Error('No results could be read');
+        res = rankResults(results, q);
+      }
+      searchCache[key] = res;
+      return res;
+    }
+    // Get the MIDI bytes for a sequence entirely in the page (no redirect).
     function renderOnlineResults(results) {
-      var list = $('#onlineResultList');
-      $('#onlineResultCount').textContent = results.length ? results.length + ' sequences' : 'No results';
-      if (!results.length) { list.innerHTML = '<div class="search-empty">No matching sequences were found in the public results. Try a shorter query or open Online Sequencer directly.</div>'; return; }
-      list.innerHTML = results.map(function (r, i) {
+      var list = $('#onlineResultList'), shown = results.slice(0, shownCount);
+      $('#onlineResultCount').textContent = results.length ? 'Showing ' + shown.length + ' of ' + results.length : 'No results';
+      if (!results.length) { list.innerHTML = '<div class="search-empty">No matching sequences were found. Try fewer words, a different spelling, or paste a sequence link or number.</div>'; return; }
+      list.innerHTML = shown.map(function (r, i) {
         var meta = [r.creator, r.plays == null ? null : r.plays.toLocaleString() + ' plays', r.duration].filter(Boolean).join(' · ');
-        return '<article class="online-result" data-sequence-id="'+safeText(r.id)+'"><div class="online-result-rank">'+(i+1)+'</div><div class="online-result-main"><a class="online-result-title" href="'+safeText(r.url)+'" target="_blank" rel="noopener noreferrer">'+safeText(r.title)+'</a><div class="online-result-meta">'+safeText(meta || 'Sequence on Online Sequencer')+'</div><div class="online-result-actions"><a href="'+safeText(r.url)+'" target="_blank" rel="noopener noreferrer">Listen ↗</a><a class="download-midi" href="'+safeText(r.url)+'" target="_blank" rel="noopener noreferrer" data-midi-for="'+safeText(r.id)+'">Get MIDI ↗</a></div></div></article>';
-      }).join('');
-      Array.from(list.querySelectorAll('[data-midi-for]')).forEach(function (a) {
-        a.addEventListener('click', async function (e) {
-          e.preventDefault();
-          var result = results.find(function (r) { return r.id === a.getAttribute('data-midi-for'); });
-          if (!result) { if (a.href) window.open(a.href, '_blank', 'noopener,noreferrer'); return; }
-          a.textContent = 'Finding MIDI…';
-          try {
-            var midiUrl = await findMidiUrl(result.url);
-            if (midiUrl) { a.href = midiUrl; a.textContent = 'Download MIDI ↓'; a.removeAttribute('data-midi-for'); a.setAttribute('download', ''); }
-            else { a.href = result.url; a.textContent = 'Open to export MIDI ↗'; a.removeAttribute('data-midi-for'); }
-          } catch (_) {
-            a.href = result.url; a.textContent = 'Open to export MIDI ↗'; a.removeAttribute('data-midi-for');
-          }
-        });
-      });
+        return '<article class="online-result"><div class="online-result-rank">' + (i + 1) + '</div><div class="online-result-main"><div class="online-result-title">' + safeText(r.title) + '</div><div class="online-result-meta">' + safeText(meta || 'Sequence #' + r.id) + '</div><div class="online-result-actions"><a class="download-midi" href="' + safeText(r.url) + '" target="_blank" rel="noopener noreferrer">View on site ↗</a></div></div></article>';
+      }).join('') + (results.length > shown.length ? '<button type="button" class="ghost ol-more">Show ' + Math.min(10, results.length - shown.length) + ' more</button>' : '');
+      var more = list.querySelector('.ol-more'); if (more) more.addEventListener('click', function () { shownCount += 10; renderOnlineResults(results); });
     }
+    function loadRecent() { try { return JSON.parse(localStorage.getItem('tetrachordRecentSearches') || '[]'); } catch (_) { return []; } }
+    function saveRecent(q) { try { var r = loadRecent().filter(function (x) { return x.toLowerCase() !== q.toLowerCase(); }); r.unshift(q); localStorage.setItem('tetrachordRecentSearches', JSON.stringify(r.slice(0, 6))); } catch (_) {} renderRecent(); }
+    function renderRecent() {
+      var box = $('#onlineRecent'); if (!box) return;
+      box.innerHTML = loadRecent().map(function (q) { return '<button type="button" class="chip">' + safeText(q) + '</button>'; }).join('');
+      Array.from(box.querySelectorAll('.chip')).forEach(function (b) { b.addEventListener('click', function () { $('#onlineSearchQuery').value = b.textContent; runOnlineSearch(); }); });
+    }
+    var searchToken = 0;
     async function runOnlineSearch() {
-      var q = $('#onlineSearchQuery').value.trim();
+      var q = $('#onlineSearchQuery').value.trim().replace(/\s+/g, ' ');
       if (!q) return;
-      var externalUrl = onlineSearchUrl();
-      $('#openOnlineResults').href = externalUrl;
+      var token = ++searchToken; shownCount = 10; lastQuery = q;
+      $('#openOnlineResults').href = onlineSearchUrl(q);
       $('#onlineResultCount').textContent = 'Searching…';
-      $('#onlineResultList').innerHTML = '<div class="search-empty">Searching public Online Sequencer results…</div>';
-      setOnlineSearchStatus('Searching for “' + q + '” and sorting by popularity…');
+      $('#onlineResultList').innerHTML = '<div class="search-empty">Searching Online Sequencer…</div>';
+      setOnlineSearchStatus('Searching for “' + q + '”…');
       try {
-        var target = 'https://onlinesequencer.net/sequences?sort=2&search=' + encodeURIComponent(q);
-        var response = await fetch('https://r.jina.ai/' + target, {headers:{'Accept':'text/plain'}});
-        if (!response.ok) throw new Error('Search request failed');
-        var markdown = await response.text();
-        var results = parseSequenceResults(markdown);
-        renderOnlineResults(results);
-        if (results.length) setOnlineSearchStatus('Showing up to 10 public matches. “Get MIDI” attempts to locate the sequence’s direct MIDI link; if unavailable, it opens the sequence page.');
-        else setOnlineSearchStatus('The site returned no parseable matches. Open Online Sequencer to search there.');
+        var results = await searchOnline(q);
+        if (token !== searchToken) return;
+        lastResults = results; renderOnlineResults(results); saveRecent(q);
+        setOnlineSearchStatus(results.length ? 'Best matches first. Open one with “View on site”, then see the ? button for how to export its MIDI.' : 'No matches. Try fewer words, or paste a sequence link.');
       } catch (err) {
+        if (token !== searchToken) return;
         $('#onlineResultCount').textContent = 'Search unavailable';
-        $('#onlineResultList').innerHTML = '<div class="search-empty">The browser could not retrieve Online Sequencer results through the public reader. The site may block automated requests. Use <b>Open results on Online Sequencer</b> to search directly; this file cannot bypass the site’s access controls.</div>';
+        $('#onlineResultList').innerHTML = '<div class="search-empty">Could not reach Online Sequencer through the browser. <button type="button" class="ghost" id="olRetry">Try again</button><br>You can still paste a sequence link or number into the box, or drop a .mid file onto this page.</div>';
+        var rb = $('#olRetry'); if (rb) rb.addEventListener('click', runOnlineSearch);
         setOnlineSearchStatus('Could not load search results from this browser.');
       }
     }
     $('#onlineSearchForm').addEventListener('submit', function (e) { e.preventDefault(); runOnlineSearch(); });
+    renderRecent();
+
+    (function () {
+      var dlg = $('#helpDialog'), opener = null;
+      function openHelp() { opener = document.activeElement; dlg.hidden = false; $('#helpClose').focus(); }
+      function closeHelp() { dlg.hidden = true; if (opener && opener.focus) opener.focus(); }
+      $('#helpBtn').addEventListener('click', openHelp);
+      $('#helpClose').addEventListener('click', closeHelp);
+      dlg.addEventListener('click', function (e) { if (e.target === dlg) closeHelp(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !dlg.hidden) closeHelp(); });
+      Array.from(dlg.querySelectorAll('[data-os]')).forEach(function (b) {
+        b.addEventListener('click', function () {
+          Array.from(dlg.querySelectorAll('[data-os]')).forEach(function (x) { x.setAttribute('aria-selected', String(x === b)); });
+          Array.from(dlg.querySelectorAll('[data-os-panel]')).forEach(function (p) { p.hidden = p.getAttribute('data-os-panel') !== b.getAttribute('data-os'); });
+        });
+      });
+      var ua = navigator.userAgent || '', guess = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ? 'ios' : /Android/.test(ua) ? 'android' : /Mac/.test(ua) ? 'mac' : 'win';
+      var gb = dlg.querySelector('[data-os="' + guess + '"]'); if (gb) gb.click();
+    })();
     $('#searchImportMidi').addEventListener('click', function () {
       openPage('custom');
       var input = $('#customMidi');
@@ -1919,5 +2061,6 @@ function build(s) {
 })();
 
 </script>
+
 
 </body></html>
