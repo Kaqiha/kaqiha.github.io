@@ -1,7 +1,5 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
-<title>Tetrachord</title>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style> <title>Tetrachord</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=DM+Mono:wght@400;500&display=swap"> </head><body>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=DM+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: a score-sheet menu (each song is a row carrying a four-segment meter of its own chart) that leads to one centered four-lane highway. Dark by choice: a game screen, not a document. */
 :root {
@@ -125,15 +123,88 @@ input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 100%
 .r-actions { display: grid; gap: 10px; }
 #rNote { min-height: 1.4em; color: var(--accent); margin: 0; }
 
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
-@media (max-width: 440px) {
-  .set-row > span:first-child { width: 100%; }
-  .s-best { margin-left: 0; }
+/* polished title screen */
+body {
+  background:
+    radial-gradient(ellipse at 50% 5%, rgba(255,176,79,.13), transparent 42%),
+    radial-gradient(ellipse at 8% 72%, rgba(255,122,144,.07), transparent 32%),
+    var(--ink);
 }
+.home { max-width: 620px; margin: clamp(28px, 8vh, 86px) auto 0; }
+.home header { gap: 18px; margin-bottom: 34px; }
+.home .eyebrow { display:flex; align-items:center; gap:9px; width:fit-content; color:var(--accent); font-size:11px; letter-spacing:.18em; text-transform:uppercase; }
+.home .eyebrow::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 14px rgba(255,176,79,.7); }
+.home h1 { font-size:clamp(64px, 14vw, 108px); letter-spacing:-.065em; line-height:.84; }
+.home .lanebar { max-width:390px; gap:7px; margin-top:6px; }
+.home .lanebar i { height:9px; border-radius:3px; box-shadow:0 0 18px rgba(255,255,255,.025); }
+.home .lede { font-family:var(--display); font-size:clamp(17px, 3vw, 21px); line-height:1.4; max-width:34ch; }
+.home-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.home-option {
+  position:relative; isolation:isolate; overflow:hidden; display:flex; flex-direction:column; align-items:flex-start; gap:10px;
+  min-height:174px; width:100%; padding:22px; text-align:left; border:1px solid var(--line); border-radius:18px;
+  background:linear-gradient(145deg,rgba(29,32,48,.98),rgba(19,21,32,.98));
+  transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease;
+}
+.home-option::before { content:""; position:absolute; z-index:-1; width:150px; height:150px; right:-54px; bottom:-70px; border-radius:50%; background:var(--card-glow,rgba(255,176,79,.12)); filter:blur(2px); transition:transform .2s ease; }
+.home-option::after { content:"↗"; position:absolute; top:18px; right:20px; color:var(--muted); font-size:20px; transition:transform .18s ease,color .18s ease; }
+.home-option:hover { transform:translateY(-3px); border-color:var(--card-accent,var(--accent)); box-shadow:0 12px 36px rgba(0,0,0,.22); }
+.home-option:hover::before { transform:scale(1.25); }
+.home-option:hover::after { transform:translate(2px,-2px); color:var(--card-accent,var(--accent)); }
+.home-option strong { display:block; font:800 clamp(25px,4vw,32px)/1 var(--display); letter-spacing:-.04em; }
+.home-option span { display:block; max-width:26ch; color:var(--muted); font-size:12px; line-height:1.6; }
+.home-option[data-page="demo"] { --card-accent:var(--l3); --card-glow:rgba(123,227,166,.13); }
+.home-option[data-page="custom"] { --card-accent:var(--l1); --card-glow:rgba(255,176,79,.15); }
+.home-option[data-page="search"] { grid-column:1 / -1; min-height:94px; flex-direction:row; justify-content:space-between; align-items:center; gap:16px; background:rgba(21,23,34,.58); }
+.home-option[data-page="search"] strong { font-size:23px; }
+.home-option[data-page="search"] span { margin-right:26px; }
+.home-option[data-page="search"]::before { display:none; }
+.section-nav { display:flex; align-items:center; gap:14px; margin-bottom:24px; }
+.section-nav strong { font:800 18px/1 var(--display); }
+.section-nav span { flex:1; }
+#searchPage .soon { margin-top:12px; padding:24px; border-radius:16px; background:var(--ink-2); line-height:1.8; }
+  .search-intro,.search-import,.search-results-wrap { margin-top:14px; border:1px solid var(--line); border-radius:16px; padding:18px; background:var(--ink-2); }
+  .search-intro > p,.search-import p { margin:0 0 14px; color:var(--muted); line-height:1.65; font-size:13px; }
+  .online-search-form { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; width:100%; }
+  .online-search-form input { display:block; box-sizing:border-box; width:100%; min-width:0; border:1px solid var(--line); border-radius:10px; padding:13px 14px; color:var(--text); background:var(--ink); font:inherit; }
+  .online-search-form button { display:block; width:100%; }
+  .search-tools { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:12px; color:var(--muted); font-size:12px; }
+  .search-tools a { color:var(--l1); text-decoration:none; }
+  .search-results-heading { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; }
+  .search-results-heading span,.search-note { color:var(--muted); font-size:12px; }
+  #onlineSearchStatus { margin:12px 0 0; color:var(--muted); font-size:13px; line-height:1.6; }
+  .online-result-list { display:grid; gap:9px; }
+  .online-result { display:grid; grid-template-columns:42px minmax(0,1fr); gap:12px; align-items:start; border:1px solid var(--line); border-radius:12px; padding:13px; background:var(--ink); }
+  .online-result-rank { display:grid; place-items:center; width:36px; height:36px; border-radius:10px; background:rgba(124,92,255,.15); color:var(--l1); font-weight:800; }
+  .online-result-main { min-width:0; }
+  .online-result-title { display:block; color:var(--text); font-weight:750; line-height:1.35; overflow-wrap:anywhere; text-decoration:none; }
+  .online-result-meta { margin-top:5px; color:var(--muted); font-size:12px; line-height:1.5; }
+  .online-result-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .online-result-actions a { display:inline-flex; align-items:center; justify-content:center; padding:8px 11px; border:1px solid var(--line); border-radius:8px; color:var(--text); font-size:12px; text-decoration:none; }
+  .online-result-actions a.download-midi { border-color:rgba(123,227,166,.5); color:var(--l3); }
+  .search-empty { padding:22px; border:1px dashed var(--line); border-radius:12px; color:var(--muted); line-height:1.6; }
+  .search-import { display:flex; flex-direction:column; align-items:stretch; gap:12px; }
+  .search-import > div { min-width:0; }
+  .search-note { margin-top:12px; line-height:1.6; }
+  @media (max-width:520px) { .search-intro,.search-import,.search-results-wrap { padding:13px; } .online-result { padding:10px; } }
 </style>
 
 <div class="wrap">
-  <section id="menu">
+  <section id="home" class="home">
+    <header>
+      <div class="eyebrow">FOUR LANES · YOUR RHYTHM</div>
+      <h1>Tetrachord</h1>
+      <div class="lanebar" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <p class="lede">Drop into the rhythm. Play a demo, bring your own music, or explore what’s next.</p>
+    </header>
+    <div class="home-options">
+      <button class="home-option" type="button" data-page="demo"><strong>Demo</strong><span>Play built-in songs and MIDI transcriptions →</span></button>
+      <button class="home-option" type="button" data-page="custom"><strong>Custom</strong><span>Import your own MIDI file and play it →</span></button>
+      <button class="home-option" type="button" data-page="search"><strong>Search</strong><span>Find songs online · Not implemented</span></button>
+    </div>
+  </section>
+
+  <section id="menu" hidden>
+    <div class="section-nav"><button class="ghost" type="button" id="backHome">← Home</button><strong id="sectionTitle">Demo</strong><span></span></div>
     <header>
       <h1>Tetrachord</h1>
       <div class="lanebar" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -142,7 +213,7 @@ input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 100%
 
     <div id="songs" role="radiogroup" aria-label="Choose a song"></div>
 
-    <div class="settings">
+    <div class="settings" id="settingsBlock">
       <div class="set-row"><span>Keys</span>
         <span class="seg">
           <button type="button" data-setting="keys" data-value="song" aria-pressed="true">Per song</button>
@@ -173,6 +244,31 @@ input[type="range"] { accent-color: var(--accent); width: 200px; max-width: 100%
     </div>
 
     <button id="play" class="primary" type="button">Play</button>
+  </section>
+
+  <section id="searchPage" hidden>
+    <div class="section-nav"><button class="ghost" type="button" id="searchHome">← Home</button><strong>Search Online Sequencer</strong><span></span></div>
+    <div class="search-intro">
+      <p>Search sequences on Online Sequencer. Results are sorted by popularity; choose a sequence to listen or download its MIDI.</p>
+      <form id="onlineSearchForm" class="online-search-form">
+        <input id="onlineSearchQuery" type="search" placeholder="Enter a song or artist…" aria-label="Search Online Sequencer" required maxlength="120">
+        <button class="primary" type="submit">Search songs</button>
+      </form>
+      <div class="search-tools">
+        <a id="openOnlineResults" href="https://onlinesequencer.net/sequences?sort=2" target="_blank" rel="noopener noreferrer">Open results on Online Sequencer ↗</a>
+        <span>Top 10 · sorted by plays</span>
+      </div>
+      <p id="onlineSearchStatus" role="status" aria-live="polite">Enter a search term to find matching sequences.</p>
+    </div>
+    <div class="search-results-wrap">
+      <div class="search-results-heading"><strong>Search results</strong><span id="onlineResultCount">No results yet</span></div>
+      <div id="onlineResultList" class="online-result-list"><div class="search-empty">Your top 10 matching sequences will appear here.</div></div>
+    </div>
+    <div class="search-import">
+      <div><strong>Already have a MIDI file?</strong><p>Import a downloaded <b>.mid</b> or <b>.midi</b> file directly into Custom.</p></div>
+      <button id="searchImportMidi" class="primary" type="button">Import MIDI into Custom</button>
+    </div>
+    <p class="search-note">Online Sequencer does not provide a documented public search API. This page attempts to read its public results; if the browser or site blocks the request, use “Open results” and download the MIDI from the sequence page.</p>
   </section>
 
   <section id="game" hidden>
@@ -758,6 +854,8 @@ function build(s) {
   songsEl.appendChild(customPanel);
   var customSongIndex = -1;
   var customChartRows = [];
+  var currentPage = 'demo';
+  var customHRef = customH;
 
   function readVLQ(bytes, state) {
     var value = 0, b;
@@ -1098,7 +1196,7 @@ function build(s) {
       var btn=document.createElement('button');btn.type='button';btn.className='song';btn.dataset.i=customSongIndex;btn.dataset.customSong='1';btn.setAttribute('role','radio');
       btn.innerHTML='<span class="s-top"><span><span class="s-title"></span><span class="s-meta">Imported MIDI · '+(cf?'CSV keymap':(mode==='insane'?'Insane generation':'Medium generation'))+'</span></span><span class="s-diff">'+(mode==='insane'?'INSANE':'CUSTOM')+'</span></span><span class="s-bottom"><span class="keys" data-keys></span><span class="s-stat">'+chart.length+' notes · '+fmtTime(b.total)+'</span></span>';
       btn.querySelector('.s-title').textContent=song.title;btn.addEventListener('click',function(){select(customSongIndex);});customPanel.before(btn);
-      customChartRows=chart;$('#exportMap').disabled=false;$('#customStatus').textContent='Loaded '+mf.name+' — '+parsed.notes.length+' MIDI notes, '+chart.length+' chart notes. Select the custom song and press Play.';renderKeys();select(customSongIndex);
+      customChartRows=chart;$('#exportMap').disabled=false;$('#customStatus').textContent='Loaded '+mf.name+' — '+parsed.notes.length+' MIDI notes, '+chart.length+' chart notes. Press Play when ready.';renderKeys();select(customSongIndex);openPage('custom');
     }catch(err){status.textContent='Could not load file: '+err.message;}
   });
   $('#exportMap').addEventListener('click',function(){if(!customChartRows.length)return;var rows=['time_ms,lane,duration_ms,midi_note'];customChartRows.forEach(function(n){rows.push([Math.round(n.t*1000),n.lane,Math.round((n.e||0)*1000),n.m||''].join(','));});downloadText('tetrachord-keymap.csv',rows.join('\n'),'text/csv;charset=utf-8;');});
@@ -1162,10 +1260,135 @@ function build(s) {
 
   /* ---------- views ---------- */
   function show(name) {
-    ['menu', 'game', 'results'].forEach(function (v) { $('#' + v).hidden = v !== name; });
+    ['home', 'menu', 'searchPage', 'game', 'results'].forEach(function (v) { $('#' + v).hidden = v !== name; });
     window.scrollTo(0, 0);
   }
+  function openPage(page) {
+    currentPage = page;
+    if (page === 'search') { show('searchPage'); return; }
+    show('menu');
+    $('#sectionTitle').textContent = page === 'custom' ? 'Custom' : 'Demo';
+    songsEl.querySelectorAll(':scope > .sec, :scope > .song, :scope > .custom-panel').forEach(function (el) {
+      if (page === 'custom') {
+        el.hidden = !(el.classList.contains('custom-panel') || el.hasAttribute('data-custom-song'));
+      } else {
+        el.hidden = el.classList.contains('custom-panel') || el.hasAttribute('data-custom-song') || el === customHRef;
+      }
+    });
+    $('#settingsBlock').hidden = page === 'custom' && customSongIndex < 0;
+    $('#play').hidden = page === 'custom' && customSongIndex < 0;
+    if (page === 'custom') customPanel.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+  document.querySelectorAll('[data-page]').forEach(function (b) { b.addEventListener('click', function () { openPage(b.dataset.page); }); });
+  $('#backHome').addEventListener('click', function () { show('home'); });
+  $('#searchHome').addEventListener('click', function () { show('home'); });
 
+    function onlineSearchUrl() {
+      var q = $('#onlineSearchQuery').value.trim();
+      return 'https://onlinesequencer.net/sequences?sort=2' + (q ? '&search=' + encodeURIComponent(q) : '');
+    }
+    function setOnlineSearchStatus(message) { $('#onlineSearchStatus').textContent = message; }
+    function safeText(value) { return String(value || '').replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+    function getSequenceId(url) {
+      try { var u = new URL(url, 'https://onlinesequencer.net'); var m = u.pathname.match(/^\/(\d+)\/?$/); return m ? m[1] : null; } catch (_) { return null; }
+    }
+    function parseSequenceResults(markdown) {
+      var lines = markdown.split(/\r?\n/), results = [], seen = {};
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        var match = line.match(/^\[(.+?)\]\((https?:\/\/onlinesequencer\.net\/\d+\/?)(?:\s+"[^"]*")?\)/i);
+        if (!match) continue;
+        var id = getSequenceId(match[2]);
+        if (!id || seen[id]) continue;
+        // Only keep links in the sequence-listing section, not navigation links.
+        var context = lines.slice(i + 1, Math.min(lines.length, i + 7)).join(' ');
+        var creatorMatch = context.match(/by\s+\[([^\]]+)\]/i);
+        var playsMatch = context.match(/(?:^|\s)([\d,]+)\s*(?:plays|views)\b/i);
+        var durationMatch = context.match(/\b(\d{1,2}:\d{2})\b/);
+        // The sequence listing displays the play count as the first numeric stat after duration, without a label.
+        if (!playsMatch && durationMatch) {
+          var afterDuration = context.slice(context.indexOf(durationMatch[0]) + durationMatch[0].length);
+          var statMatch = afterDuration.match(/(?:^|\s)([\d,]+)(?=\s|$)/);
+          if (statMatch) playsMatch = statMatch;
+        }
+        results.push({id:id, title:match[1].replace(/\\\*/g,'*'), url:'https://onlinesequencer.net/'+id, creator:creatorMatch ? creatorMatch[1] : 'Online Sequencer creator', plays:playsMatch ? Number(playsMatch[1].replace(/,/g,'')) : null, duration:durationMatch ? durationMatch[1] : null});
+        seen[id] = true;
+        if (results.length >= 10) break;
+      }
+      return results;
+    }
+    async function findMidiUrl(sequenceUrl) {
+      // Jina Reader converts the public sequence page to text and exposes the site's own MIDI link when available.
+      var readerUrl = 'https://r.jina.ai/' + sequenceUrl;
+      var response = await fetch(readerUrl, {headers:{'Accept':'text/plain'}});
+      if (!response.ok) throw new Error('Could not inspect MIDI link');
+      var body = await response.text();
+      var patterns = [
+        /\[Download\s+\.mid\]\((https?:\/\/[^)]+)\)/i,
+        /\[Download\s+MIDI\]\((https?:\/\/[^)]+)\)/i,
+        /href=["']([^"']+\.mid(?:\?[^"']*)?)["']/i
+      ];
+      for (var i=0;i<patterns.length;i++) { var m=body.match(patterns[i]); if(m) return new URL(m[1], sequenceUrl).href; }
+      return null;
+    }
+    function renderOnlineResults(results) {
+      var list = $('#onlineResultList');
+      $('#onlineResultCount').textContent = results.length ? results.length + ' sequences' : 'No results';
+      if (!results.length) { list.innerHTML = '<div class="search-empty">No matching sequences were found in the public results. Try a shorter query or open Online Sequencer directly.</div>'; return; }
+      list.innerHTML = results.map(function (r, i) {
+        var meta = [r.creator, r.plays == null ? null : r.plays.toLocaleString() + ' plays', r.duration].filter(Boolean).join(' · ');
+        return '<article class="online-result" data-sequence-id="'+safeText(r.id)+'"><div class="online-result-rank">'+(i+1)+'</div><div class="online-result-main"><a class="online-result-title" href="'+safeText(r.url)+'" target="_blank" rel="noopener noreferrer">'+safeText(r.title)+'</a><div class="online-result-meta">'+safeText(meta || 'Sequence on Online Sequencer')+'</div><div class="online-result-actions"><a href="'+safeText(r.url)+'" target="_blank" rel="noopener noreferrer">Listen ↗</a><a class="download-midi" href="'+safeText(r.url)+'" target="_blank" rel="noopener noreferrer" data-midi-for="'+safeText(r.id)+'">Get MIDI ↗</a></div></div></article>';
+      }).join('');
+      Array.from(list.querySelectorAll('[data-midi-for]')).forEach(function (a) {
+        a.addEventListener('click', async function (e) {
+          e.preventDefault();
+          var result = results.find(function (r) { return r.id === a.getAttribute('data-midi-for'); });
+          if (!result) { if (a.href) window.open(a.href, '_blank', 'noopener,noreferrer'); return; }
+          a.textContent = 'Finding MIDI…';
+          try {
+            var midiUrl = await findMidiUrl(result.url);
+            if (midiUrl) { a.href = midiUrl; a.textContent = 'Download MIDI ↓'; a.removeAttribute('data-midi-for'); a.setAttribute('download', ''); }
+            else { a.href = result.url; a.textContent = 'Open to export MIDI ↗'; a.removeAttribute('data-midi-for'); }
+          } catch (_) {
+            a.href = result.url; a.textContent = 'Open to export MIDI ↗'; a.removeAttribute('data-midi-for');
+          }
+        });
+      });
+    }
+    async function runOnlineSearch() {
+      var q = $('#onlineSearchQuery').value.trim();
+      if (!q) return;
+      var externalUrl = onlineSearchUrl();
+      $('#openOnlineResults').href = externalUrl;
+      $('#onlineResultCount').textContent = 'Searching…';
+      $('#onlineResultList').innerHTML = '<div class="search-empty">Searching public Online Sequencer results…</div>';
+      setOnlineSearchStatus('Searching for “' + q + '” and sorting by popularity…');
+      try {
+        var target = 'https://onlinesequencer.net/sequences?sort=2&search=' + encodeURIComponent(q);
+        var response = await fetch('https://r.jina.ai/' + target, {headers:{'Accept':'text/plain'}});
+        if (!response.ok) throw new Error('Search request failed');
+        var markdown = await response.text();
+        var results = parseSequenceResults(markdown);
+        renderOnlineResults(results);
+        if (results.length) setOnlineSearchStatus('Showing up to 10 public matches. “Get MIDI” attempts to locate the sequence’s direct MIDI link; if unavailable, it opens the sequence page.');
+        else setOnlineSearchStatus('The site returned no parseable matches. Open Online Sequencer to search there.');
+      } catch (err) {
+        $('#onlineResultCount').textContent = 'Search unavailable';
+        $('#onlineResultList').innerHTML = '<div class="search-empty">The browser could not retrieve Online Sequencer results through the public reader. The site may block automated requests. Use <b>Open results on Online Sequencer</b> to search directly; this file cannot bypass the site’s access controls.</div>';
+        setOnlineSearchStatus('Could not load search results from this browser.');
+      }
+    }
+    $('#onlineSearchForm').addEventListener('submit', function (e) { e.preventDefault(); runOnlineSearch(); });
+    $('#searchImportMidi').addEventListener('click', function () {
+      openPage('custom');
+      var input = $('#customMidi');
+      if (input) input.click();
+    });
+    $('#customMidi').addEventListener('change', function () {
+      if (!this.files || !this.files.length) return;
+      var loadButton = $('#customLoad');
+      if (loadButton) loadButton.click();
+    });
   /* ---------- audio ---------- */
   var ctx = null, master = null, noiseBuf = null;
   function initAudio() {
@@ -1462,14 +1685,15 @@ function build(s) {
     closeAudio();
     down = [0, 0, 0, 0]; ptr = {};
   }
-  function quit() { stopAll(); renderKeys(); select(sel); show('menu'); }
+  function quit() { stopAll(); renderKeys(); select(sel); openPage(currentPage); }
   $('#pauseBtn').addEventListener('click', pause);
   $('#resume').addEventListener('click', resume);
   $('#restart').addEventListener('click', function () { stopAll(); start(sel); });
   $('#quit').addEventListener('click', quit);
   $('#quit2').addEventListener('click', quit);
   $('#retry').addEventListener('click', function () { start(sel); });
-  $('#play').addEventListener('click', function () { start(sel); });
+  $('#play').addEventListener('click', function () { if (currentPage !== 'custom' || customSongIndex >= 0) start(sel); });
+  show('home');
 
   function gradeFor(acc) { return acc >= 95 ? 'S' : acc >= 88 ? 'A' : acc >= 78 ? 'B' : acc >= 65 ? 'C' : 'D'; }
 
