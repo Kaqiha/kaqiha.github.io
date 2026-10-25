@@ -1532,14 +1532,19 @@ function build(s) {
     c.strokeStyle = 'rgba(255,255,255,0.08)'; c.lineWidth = 1;
     for (l = 0; l <= 4; l++) { c.beginPath(); c.moveTo(x0 + l * laneW + 0.5, 0); c.lineTo(x0 + l * laneW + 0.5, H); c.stroke(); }
 
-    /* hit line */
-    c.fillStyle = 'rgba(255,255,255,' + (0.45 + 0.3 * pulse) + ')';
-    c.fillRect(x0, hitY - 1.5, laneW * 4, 3);
+    /* judgement line: hollow markers matching the notes' size and lane spacing */
+    var nw = laneW - 14, nh = 22;
+    c.strokeStyle = 'rgba(255,255,255,' + (0.7 + 0.3 * pulse) + ')';
+    c.lineWidth = 3;
+    for (l = 0; l < 4; l++) {
+      var jx = x0 + l * laneW + 7;
+      rr(c, jx, hitY - nh / 2, nw, nh, 6);
+      c.stroke();
+    }
 
     /* notes */
     var approach = BASE_APPROACH / (st.fall / 100);
     var pps = (hitY + 10) / approach;
-    var nw = laneW - 14, nh = 22;
     for (l = 0; l < 4; l++) {
       var arr = G.lanes[l], col = pal.lanes[l];
       for (i = 0; i < arr.length; i++) {
