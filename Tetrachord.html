@@ -777,8 +777,9 @@ function build(s) {
         running=status; var hi=status&0xF0, d1, d2;
         if(status<0xF0){ d1=(u[st.i]<128)?u[st.i++]:0; if(hi!==0xC0&&hi!==0xD0)d2=u[st.i++]; else d2=0; }
         else continue;
-        if(hi===0x90&&d2>0) all.push({tick:tick,on:true,note:d1,vel:d2,order:serial++});
-        else if(hi===0x80||(hi===0x90&&d2===0)) all.push({tick:tick,on:false,note:d1,order:serial++});
+        var channel=status&0x0F;
+        if(hi===0x90&&d2>0) all.push({tick:tick,on:true,note:d1,vel:d2,channel:channel,order:serial++});
+        else if(hi===0x80||(hi===0x90&&d2===0)) all.push({tick:tick,on:false,note:d1,channel:channel,order:serial++});
       }
       pos=end;
     }
@@ -787,8 +788,8 @@ function build(s) {
     all.forEach(function(e){us+=(e.tick-lastTick)*tempo/division;lastTick=e.tick;if(e.meta){tempo=e.tempo;tempos.push({tick:e.tick,us:us,tempo:tempo});} });
     function seconds(t){var tt=500000,lt=0,uu=0;for(var j=0;j<tempos.length;j++){var q=tempos[j];if(q.tick>t)break;tt=q.tempo;lt=q.tick;uu=q.us;}return (uu+(t-lt)*tt/division)/1e6;}
     var active={}, notes=[];
-    all.forEach(function(e){if(e.meta)return;var key=e.note;if(e.on){(active[key]||(active[key]=[])).push(e);}else if(active[key]&&active[key].length){var on=active[key].shift();notes.push({t:seconds(on.tick),d:Math.max(.06,seconds(e.tick)-seconds(on.tick)),m:key,v:on.vel});}});
-    Object.keys(active).forEach(function(k){active[k].forEach(function(on){notes.push({t:seconds(on.tick),d:.18,m:+k,v:on.vel});});});
+    all.forEach(function(e){if(e.meta)return;var key=(e.channel==null?0:e.channel)+':'+e.note;if(e.on){(active[key]||(active[key]=[])).push(e);}else if(active[key]&&active[key].length){var on=active[key].shift();notes.push({t:seconds(on.tick),d:Math.max(.06,seconds(e.tick)-seconds(on.tick)),m:on.note,v:on.vel,channel:on.channel,drum:on.channel===9});}});
+    Object.keys(active).forEach(function(k){active[k].forEach(function(on){notes.push({t:seconds(on.tick),d:.18,m:on.note,v:on.vel,channel:on.channel,drum:on.channel===9});});});
     notes.sort(function(a,b){return a.t-b.t;});
     if(!notes.length) throw new Error('No playable notes were found in this MIDI file.');
     return {notes:notes,duration:Math.max.apply(null,notes.map(function(n){return n.t+n.d;}))};
@@ -985,7 +986,7 @@ function build(s) {
       groups.forEach(function(g){
         if(g.t<until-1e-6){if(g.notes.length>2){g.notes.sort(function(a,b){return (b.v||0)-(a.v||0);});g.notes=g.notes.slice(0,2).sort(function(a,b){return a.m-b.m;});}return;}
         var bi=-1,bd=CH_HOLDMIN;
-        g.notes.forEach(function(n,j){if(n.d>=bd){bd=n.d;bi=j;}});
+        g.notes.forEach(function(n,j){if(!n.drum&&n.d>=bd){bd=n.d;bi=j;}});
         if(bi>=0){g.holdIdx=bi;g.holdDur=Math.min(bd,6);until=g.t+g.holdDur+0.06;}
       });
     }
@@ -996,7 +997,9 @@ function build(s) {
       g.notes.forEach(function(n,j){
         var dur=0;
         if(CH_HOLDBLOCKS){if(j===g.holdIdx)dur=g.holdDur;}
-        else if(g.notes.length===1&&n.d>CH_HOLDMIN&&gap>0.3)dur=Math.min(n.d,Math.max(0,gap-0.08),2.5);
+        // Preserve long pitched notes as holds in Medium too. The old gap>0.3
+        // requirement silently converted most sustained notes into taps.
+        else if(g.notes.length===1&&!n.drum&&n.d>=Math.max(CH_HOLDMIN,0.42))dur=Math.min(n.d,2.5);
         out.push({t:g.t,lane:ls[j],e:dur,m:n.m});
       });
     });
@@ -1063,7 +1066,9 @@ function build(s) {
       if(cf) chart=parseKeyCsv(await cf.text(),parsed.notes); else chart=generatedLaneMap(parsed.notes);
       chart=enforceChartRules(chart);
       if(!chart.length)throw new Error('The keymap contains no notes.');
-      var audio=parsed.notes.map(function(n){return {t:n.t,k:'lead',m:n.m,d:n.d,v:.35+.9*n.v/127};});
+      // MIDI channel 10 (zero-based channel 9) is percussion: render its notes as drums,
+      // while keeping those same notes in the generated/custom chart below.
+      var audio=parsed.notes.map(function(n){return {t:n.t,k:n.drum?'drum':'lead',m:n.m,d:n.d,v:.35+.9*n.v/127};});
       var laneCounts=[0,0,0,0];chart.forEach(function(n){laneCounts[n.lane]++;});
       var bpm=120, song={id:'custom-'+Date.now(),sec:'custom',title:mf.name.replace(/\.midi?$/i,''),feel:cf?'custom CSV keymap':(mode==='insane'?'insane: holds, chords & spam':'medium: trills, stairs & diamonds'),keyName:'Imported MIDI',bpm:bpm,root:60,scale:MAJ,diff:'Custom',keys:KEYSETS.dfjk,pal:{lanes:['#ff7a90','#ffb04f','#f7e35c','#7be3a6'],bg:['#201827','#090a10'],accent:'#ffb04f'},lead:{layers:[{w:'triangle',m:1,det:0,g:1}],gain:.05,atk:.004,sus:.4,rel:.1,cut:4200},custom:true};
       song.customEvents=audio; song.customNotes=chart; song.customLen=Math.max(parsed.duration,chart[chart.length-1].t+.5); song.chords=['CUSTOM'];
@@ -1196,6 +1201,9 @@ function build(s) {
 
   function play(e, when, song) {
     switch (e.k) {
+      case 'drum':
+        drumHit(e.m, when);
+        break;
       case 'lead':
         song.lead.layers.forEach(function (L) {
           envOsc(L.w, mtof(e.m) * L.m, L.det, when, when + e.d, song.lead.gain * L.g * (e.v || 1), song.lead.atk, song.lead.sus, song.lead.rel, song.lead.cut);
