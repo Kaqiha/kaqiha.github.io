@@ -192,6 +192,11 @@ body {
   .ol-more { width:100%; margin-top:4px; }
   #searchPage.dropping { outline:2px dashed var(--l1); outline-offset:-6px; }
 
+  .custom-count { margin:10px 0; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--ink); color:var(--text); font-size:13px; line-height:1.5; }
+  #customStatus.bad { color:#ff7a90; }
+  .mp3-status { margin:12px 0 0; color:var(--muted); font-size:13px; }
+  .mp3-status.bad { color:#ff7a90; }
+  .online-search-form input[type=file] { padding:10px; }
   .help-btn { width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:var(--ink-2); color:var(--text); font:inherit; font-weight:800; cursor:pointer; }
   .help-btn:hover { border-color:var(--l1); color:var(--l1); }
   .help-overlay { position:fixed; inset:0; z-index:50; display:grid; place-items:center; padding:16px; background:rgba(5,6,12,.72); }
@@ -914,7 +919,7 @@ function build(s) {
   songsEl.appendChild(customH);
   var customPanel = document.createElement('div');
   customPanel.className = 'custom-panel';
-  customPanel.innerHTML = '<label>MIDI file (.mid / .midi)<input id="customMidi" type="file" accept=".mid,.midi,audio/midi"></label><label>Generation<select id="customMode"><option value="medium">Medium — playable trills, stairs &amp; diamonds</option><option value="insane">Insane — hold blocks, every note, some spam</option></select></label><label>Optional CSV keymap<input id="customCsv" type="file" accept=".csv,text/csv"></label><p class="hint">Without a CSV, Medium builds a four-lane chart from phrases of trills, staircases, diamonds, rolls, fans, ladders and two-finger jumps that follow the melody, and never jacks one lane or repeats the same double back-to-back. Insane maps nearly every note (chords up to 3), turns very long notes into hold blocks, and loosens the rules so short jacks and repeated doubles can appear. CSV maps get the same playability cleanup for the selected mode. CSV columns: time_ms,lane,duration_ms (optional midi_note). Lane is 0–3. A CSV overrides the generated chart, not the MIDI audio.</p><div class="custom-actions"><button id="customLoad" class="primary" type="button">Load custom song</button><button id="exportMap" class="ghost" type="button" disabled>Export CSV keymap</button></div><p id="customStatus" role="status">Choose a MIDI file to begin.</p>';
+  customPanel.innerHTML = '<label>MIDI or audio file (.mid, .mp3, .m4a, .wav, .ogg)<input id="customMidi" type="file" accept=".mid,.midi,audio/midi,audio/*,.mp3,.m4a,.wav,.ogg"></label><label>Generation<select id="customMode"><option value="medium">Medium — playable trills, stairs &amp; diamonds</option><option value="insane">Insane — hold blocks, every note, some spam</option></select></label><label>Sensitivity<select id="customSens"><option value="low">Low — fewer notes, melody first</option><option value="normal" selected>Normal</option><option value="high">High — more notes</option></select></label><p id="customCount" class="custom-count" aria-live="polite">Choose a file to see how many notes you will get.</p><label>Optional CSV keymap (MIDI only)<input id="customCsv" type="file" accept=".csv,text/csv"></label><p class="hint">MIDI files keep their notes; the main melody is detected, charted first and played louder. Audio files (MP3 etc.) are analyzed for beats in the bass, middle and treble, and your original audio plays. Medium builds phrases of trills, staircases, diamonds, rolls, fans, ladders and two-finger jumps and never jacks a lane or repeats the same double back-to-back. Insane maps nearly every note (chords up to 3), turns very long notes into hold blocks and allows some spam. Sensitivity sets how many notes survive: Low keeps mostly the melody. CSV columns: time_ms,lane,duration_ms (optional midi_note). Lane is 0–3.</p><div class="custom-actions"><button id="customLoad" class="primary" type="button">Load custom song</button><button id="exportMap" class="ghost" type="button" disabled>Export CSV keymap</button></div><p id="customStatus" role="status">Choose a MIDI or audio file to begin.</p>';
   songsEl.appendChild(customPanel);
   var customSongIndex = -1;
   var customChartRows = [];
@@ -932,7 +937,7 @@ function build(s) {
     if (str(0,4)!=='MThd') throw new Error('This does not look like a Standard MIDI File.');
     var hlen=dv.getUint32(4), tracks=dv.getUint16(10), division=dv.getUint16(12); pos=8+hlen;
     if (division & 0x8000) throw new Error('SMPTE-time MIDI files are not supported; export using PPQ timing.');
-    var all=[], serial=0;
+    var all=[], serial=0, names={}, progs={};
     for(var tr=0;tr<tracks;tr++){
       if(str(pos,4)!=='MTrk') throw new Error('Could not read MIDI track '+(tr+1)+'.');
       var len=dv.getUint32(pos+4), end=pos+8+len, st={i:pos+8}, tick=0, running=0;
@@ -940,13 +945,13 @@ function build(s) {
         tick+=readVLQ(u,st); var status=u[st.i];
         if(status<128){ if(!running) throw new Error('Invalid MIDI running status.'); status=running; }
         else st.i++;
-        if(status===0xFF){ var type=u[st.i++], ml=readVLQ(u,st); if(type===0x51&&ml===3){all.push({tick:tick,tempo:(u[st.i]<<16)|(u[st.i+1]<<8)|u[st.i+2],meta:true,order:serial++});} st.i+=ml; running=0; continue; }
+        if(status===0xFF){ var type=u[st.i++], ml=readVLQ(u,st); if(type===0x03){names[tr]=String.fromCharCode.apply(null,u.slice(st.i,st.i+ml));} if(type===0x51&&ml===3){all.push({tick:tick,tempo:(u[st.i]<<16)|(u[st.i+1]<<8)|u[st.i+2],meta:true,order:serial++});} st.i+=ml; running=0; continue; }
         if(status===0xF0||status===0xF7){st.i+=readVLQ(u,st);running=0;continue;}
         running=status; var hi=status&0xF0, d1, d2;
         if(status<0xF0){ d1=(u[st.i]<128)?u[st.i++]:0; if(hi!==0xC0&&hi!==0xD0)d2=u[st.i++]; else d2=0; }
         else continue;
-        var channel=status&0x0F;
-        if(hi===0x90&&d2>0) all.push({tick:tick,on:true,note:d1,vel:d2,channel:channel,order:serial++});
+        var channel=status&0x0F; if(hi===0xC0)progs[channel]=d1;
+        if(hi===0x90&&d2>0) all.push({tick:tick,on:true,note:d1,vel:d2,channel:channel,track:tr,order:serial++});
         else if(hi===0x80||(hi===0x90&&d2===0)) all.push({tick:tick,on:false,note:d1,channel:channel,order:serial++});
       }
       pos=end;
@@ -956,11 +961,38 @@ function build(s) {
     all.forEach(function(e){us+=(e.tick-lastTick)*tempo/division;lastTick=e.tick;if(e.meta){tempo=e.tempo;tempos.push({tick:e.tick,us:us,tempo:tempo});} });
     function seconds(t){var tt=500000,lt=0,uu=0;for(var j=0;j<tempos.length;j++){var q=tempos[j];if(q.tick>t)break;tt=q.tempo;lt=q.tick;uu=q.us;}return (uu+(t-lt)*tt/division)/1e6;}
     var active={}, notes=[];
-    all.forEach(function(e){if(e.meta)return;var key=(e.channel==null?0:e.channel)+':'+e.note;if(e.on){(active[key]||(active[key]=[])).push(e);}else if(active[key]&&active[key].length){var on=active[key].shift();notes.push({t:seconds(on.tick),d:Math.max(.06,seconds(e.tick)-seconds(on.tick)),m:on.note,v:on.vel,channel:on.channel,drum:on.channel===9});}});
-    Object.keys(active).forEach(function(k){active[k].forEach(function(on){notes.push({t:seconds(on.tick),d:.18,m:on.note,v:on.vel,channel:on.channel,drum:on.channel===9});});});
+    all.forEach(function(e){if(e.meta)return;var key=(e.channel==null?0:e.channel)+':'+e.note;if(e.on){(active[key]||(active[key]=[])).push(e);}else if(active[key]&&active[key].length){var on=active[key].shift();notes.push({t:seconds(on.tick),d:Math.max(.06,seconds(e.tick)-seconds(on.tick)),m:on.note,v:on.vel,channel:on.channel,tr:on.track,drum:on.channel===9});}});
+    Object.keys(active).forEach(function(k){active[k].forEach(function(on){notes.push({t:seconds(on.tick),d:.18,m:on.note,v:on.vel,channel:on.channel,tr:on.track,drum:on.channel===9});});});
     notes.sort(function(a,b){return a.t-b.t;});
     if(!notes.length) throw new Error('No playable notes were found in this MIDI file.');
-    return {notes:notes,duration:Math.max.apply(null,notes.map(function(n){return n.t+n.d;}))};
+    return {notes:notes,names:names,progs:progs,duration:Math.max.apply(null,notes.map(function(n){return n.t+n.d;}))};
+  }
+  // ---------- Main melody detection ----------
+  function markMelody(parsed){
+    var notes=parsed.notes,groups={},keys,total=0;
+    notes.forEach(function(n){n.mel=false;if(n.drum)return;total++;var k=n.tr+':'+n.channel;(groups[k]=groups[k]||[]).push(n);});
+    keys=Object.keys(groups);if(!keys.length)return 0;
+    var best=null,bestScore=-1;
+    keys.forEach(function(k){
+      var arr=groups[k].sort(function(a,b){return a.t-b.t;}),cnt=arr.length,sum=0,over=0,i;
+      for(i=0;i<cnt;i++){sum+=arr[i].m;if(i+1<cnt&&arr[i+1].t<arr[i].t+arr[i].d-0.03)over++;}
+      var mean=sum/cnt,ov=over/cnt,tr=+k.split(':')[0],ch=+k.split(':')[1];
+      var name=(parsed.names&&parsed.names[tr])||'',prog=parsed.progs&&parsed.progs[ch];
+      var f=Math.sqrt(cnt)*(1-0.8*ov)*(0.5+Math.max(0,Math.min(1,(mean-48)/36)));
+      if(/melod|lead|vocal|voice|sing|solo|vox/i.test(name))f*=1.8;
+      if(/bass|drum|perc|pad|chord|rhythm|comp/i.test(name))f*=0.5;
+      if(prog>=32&&prog<=39)f*=0.3;else if(prog>=80&&prog<=87)f*=1.3;else if(prog>=56&&prog<=79)f*=1.15;else if(prog>=88&&prog<=95)f*=0.6;
+      if(f>bestScore){bestScore=f;best={arr:arr,ov:ov};}
+    });
+    var arr=best.arr,count=0;
+    if(arr.length<0.12*total){ // chosen line is tiny: use the top voice of everything instead
+      arr=[].concat.apply([],keys.map(function(k){return groups[k];})).sort(function(a,b){return a.t-b.t;});best.ov=1;
+    }
+    if(best.ov>0.3){ // polyphonic part: keep only the top note of each onset
+      var i=0;
+      while(i<arr.length){var j=i,top=arr[i];while(j<arr.length&&arr[j].t-arr[i].t<=0.03){if(arr[j].m>top.m)top=arr[j];j++;}top.mel=true;count++;i=j;}
+    }else arr.forEach(function(n){n.mel=true;count++;});
+    return count;
   }
   // ---------- Custom chart generation: pattern phrases + playability validator ----------
   var CH_MODES={
@@ -968,9 +1000,10 @@ function build(s) {
     insane:{jack:0.085,minGap:0.04,dblGap:0,maxChord:3,tripleGap:0.24,pairGap:0.14,holdBlocks:true,holdMin:0.36,spam:true}
   };
   var CH_JACK,CH_MINGAP,CH_DBLGAP,CH_MAXCHORD,CH_TRIPLEGAP,CH_PAIRGAP,CH_HOLDBLOCKS,CH_HOLDMIN,CH_SPAM,CH_MODE;
-  function chSetMode(name){
+  function chSetMode(name,sens){
     var m=CH_MODES[name]||CH_MODES.medium;CH_MODE=CH_MODES[name]?name:'medium';
-    CH_JACK=m.jack;CH_MINGAP=m.minGap;CH_DBLGAP=m.dblGap;CH_MAXCHORD=m.maxChord;CH_TRIPLEGAP=m.tripleGap;
+    var sm=sens==='low'?3:sens==='high'?0.7:1;
+    CH_JACK=m.jack;CH_MINGAP=m.minGap*sm;CH_DBLGAP=m.dblGap;CH_MAXCHORD=sens==='low'?1:m.maxChord;CH_TRIPLEGAP=m.tripleGap;
     CH_PAIRGAP=m.pairGap;CH_HOLDBLOCKS=m.holdBlocks;CH_HOLDMIN=m.holdMin;CH_SPAM=m.spam;CH_TEMPLATES=null;
   }
   chSetMode('medium');
@@ -984,9 +1017,11 @@ function build(s) {
   // Mostly single notes and doubles. A 3-note chord survives only when it is genuinely loud
   // and isolated from nearby hits, so dense passages become playable stairs/ladders instead.
   function chThin(groups){
+    function imp(n){return (n.mel?200:0)+(n.v||0)+Math.min(n.d||0,1)*20;}
+    function gimp(g){var m=0;g.notes.forEach(function(n){var v=imp(n);if(v>m)m=v;});return m;}
     groups.forEach(function(g){
       var originalCount=g.notes.length;
-      g.notes.sort(function(a,b){return (b.v||0)-(a.v||0)||b.m-a.m;});
+      g.notes.sort(function(a,b){return imp(b)-imp(a)||b.m-a.m;});
       var top=g.notes.slice(0,3),avg=top.length?top.reduce(function(sum,n){return sum+(n.v||0);},0)/top.length:0;
       var loudTriad=originalCount>=3&&top.length>=3&&avg>=92&&top.every(function(n){return (n.v||0)>=78;});
       g.keepLoudTriple=!!loudTriad;
@@ -994,9 +1029,13 @@ function build(s) {
     });
     var out=[];
     groups.forEach(function(g){
-      var prev=out[out.length-1];
-      if(prev&&g.t-prev.t<CH_MINGAP)return;
-      out.push(g);
+      // when two hits are too close, keep the more important one (melody first)
+      while(true){
+        var prev=out[out.length-1];
+        if(!prev||g.t-prev.t>=CH_MINGAP){out.push(g);break;}
+        if(gimp(g)>gimp(prev)){out.pop();continue;}
+        break;
+      }
     });
     out.forEach(function(g,i){
       if(g.notes.length<2)return;
@@ -1238,35 +1277,103 @@ function build(s) {
     if(ti<0||li<0)throw new Error('CSV must include time_ms and lane columns.');
     return lines.slice(1).map(function(line,idx){var p=line.split(','),t=Number(p[ti]),l=Number(p[li]),d=di<0?0:Number(p[di]),m=mi<0?0:Number(p[mi]);if(!isFinite(t)||!isFinite(l)||l<0||l>3||Math.floor(l)!==l)throw new Error('Invalid time or lane on CSV row '+(idx+2)+'.');return {t:t/1000,lane:l,e:Math.max(0,d/1000),m:m};}).sort(function(a,b){return a.t-b.t;});
   }
-  function loadCustomSong(buf,name,csvText){
+  function loadCustomSong(buf,name,csvText,opts){
     var status=$('#customStatus');
     {
-      status.textContent='Reading MIDI…';var parsed=parseMidi(buf), chart;
-      var mode=$('#customMode').value;chSetMode(mode);
+      status.textContent='Reading MIDI…';var parsed=(opts&&opts.parsed)||parseMidi(buf), chart, isMp3=!!(opts&&opts.audioBuffer);
+      if(!isMp3&&parsed.notes.length&&parsed.notes[0].mel===undefined)markMelody(parsed);
+      var mode=$('#customMode').value,sens=$('#customSens').value;chSetMode(mode,sens);
       if(csvText) chart=parseKeyCsv(csvText,parsed.notes); else chart=generatedLaneMap(parsed.notes);
       chart=enforceChartRules(chart);
       if(!chart.length)throw new Error('The keymap contains no notes.');
       // MIDI channel 10 (zero-based channel 9) is percussion: render its notes as drums,
       // while keeping those same notes in the generated/custom chart below.
-      var audio=parsed.notes.map(function(n){return {t:n.t,k:n.drum?'drum':'lead',m:n.m,d:n.d,v:.35+.9*n.v/127};});
+      var audio=isMp3?[]:parsed.notes.map(function(n){return {t:n.t,k:n.drum?'drum':'lead',m:n.m,d:n.d,v:(.35+.9*n.v/127)*(n.drum?1:(n.mel?1.4:0.7))};});
       var laneCounts=[0,0,0,0];chart.forEach(function(n){laneCounts[n.lane]++;});
-      var bpm=120, song={id:'custom-'+Date.now(),sec:'custom',title:name.replace(/\.midi?$/i,''),feel:csvText?'custom CSV keymap':(mode==='insane'?'insane: holds, chords & spam':'medium: trills, stairs & diamonds'),keyName:'Imported MIDI',bpm:bpm,root:60,scale:MAJ,diff:'Custom',keys:KEYSETS.dfjk,pal:{lanes:['#ff7a90','#ffb04f','#f7e35c','#7be3a6'],bg:['#201827','#090a10'],accent:'#ffb04f'},lead:{layers:[{w:'triangle',m:1,det:0,g:1}],gain:.05,atk:.004,sus:.4,rel:.1,cut:4200},custom:true};
-      song.customEvents=audio; song.customNotes=chart; song.customLen=Math.max(parsed.duration,chart[chart.length-1].t+.5); song.chords=['CUSTOM'];
+      var bpm=120, song={id:'custom-'+Date.now(),sec:'custom',title:name.replace(/\.[a-z0-9]{2,5}$/i,''),feel:csvText?'custom CSV keymap':(mode==='insane'?'insane: holds, chords & spam':'medium: trills, stairs & diamonds'),keyName:isMp3?'Imported MP3':'Imported MIDI',bpm:bpm,root:60,scale:MAJ,diff:'Custom',keys:KEYSETS.dfjk,pal:{lanes:['#ff7a90','#ffb04f','#f7e35c','#7be3a6'],bg:['#201827','#090a10'],accent:'#ffb04f'},lead:{layers:[{w:'triangle',m:1,det:0,g:1}],gain:.05,atk:.004,sus:.4,rel:.1,cut:4200},custom:true};
+      song.audioBuffer=isMp3?opts.audioBuffer:null; song.customEvents=audio; song.customNotes=chart; song.customLen=Math.max(parsed.duration,chart[chart.length-1].t+.5); song.chords=['CUSTOM'];
       var b={ev:audio,notes:chart.map(function(n){return {t:n.t,lane:n.lane,e:n.e?n.t+n.e:0,m:n.m};}),chords:['CUSTOM'],bar:2,step:.125,total:song.customLen,laneCounts:laneCounts,uniq:[],mel:[]};
       if(customSongIndex>=0){SONGS.splice(customSongIndex,1);BUILT.splice(customSongIndex,1);}
       customSongIndex=SONGS.length;SONGS.push(song);BUILT.push(b);sel=customSongIndex;
       var old=songsEl.querySelector('[data-custom-song]');if(old)old.remove();
       var btn=document.createElement('button');btn.type='button';btn.className='song';btn.dataset.i=customSongIndex;btn.dataset.customSong='1';btn.setAttribute('role','radio');
-      btn.innerHTML='<span class="s-top"><span><span class="s-title"></span><span class="s-meta">Imported MIDI · '+(csvText?'CSV keymap':(mode==='insane'?'Insane generation':'Medium generation'))+'</span></span><span class="s-diff">'+(mode==='insane'?'INSANE':'CUSTOM')+'</span></span><span class="s-bottom"><span class="keys" data-keys></span><span class="s-stat">'+chart.length+' notes · '+fmtTime(b.total)+'</span></span>';
+      btn.innerHTML='<span class="s-top"><span><span class="s-title"></span><span class="s-meta">'+(isMp3?'Imported MP3':'Imported MIDI')+' · '+(csvText?'CSV keymap':(mode==='insane'?'Insane generation':'Medium generation'))+'</span></span><span class="s-diff">'+(mode==='insane'?'INSANE':'CUSTOM')+'</span></span><span class="s-bottom"><span class="keys" data-keys></span><span class="s-stat">'+chart.length+' notes · '+fmtTime(b.total)+'</span></span>';
       btn.querySelector('.s-title').textContent=song.title;btn.addEventListener('click',function(){select(customSongIndex);});customPanel.before(btn);
-      customChartRows=chart;$('#exportMap').disabled=false;$('#customStatus').textContent='Loaded '+name+' — '+parsed.notes.length+' MIDI notes, '+chart.length+' chart notes. Press Play when ready.';renderKeys();select(customSongIndex);openPage('custom');
+      customChartRows=chart;$('#exportMap').disabled=false;$('#customStatus').textContent='Loaded '+name+' — '+parsed.notes.length+(isMp3?' detected hits, ':' MIDI notes, ')+' '+chart.length+' chart notes. Press Play when ready.';renderKeys();select(customSongIndex);openPage('custom');
     }
   }
-  $('#customLoad').addEventListener('click', async function(){
-    var mf=$('#customMidi').files[0], cf=$('#customCsv').files[0], status=$('#customStatus');
-    if(!mf){status.textContent='Choose a MIDI file first.';return;}
-    try{ loadCustomSong(await mf.arrayBuffer(), mf.name, cf?await cf.text():null); }
-    catch(err){status.textContent='Could not load file: '+err.message;}
+  var cs = {file: null, kind: null, midi: null, audio: null, mp3: {}, token: 0, autoLoad: false, busy: false};
+  function isMidiBytes(ab) { if (!ab || ab.byteLength < 14) return false; var u = new Uint8Array(ab, 0, 4); return u[0] === 0x4D && u[1] === 0x54 && u[2] === 0x68 && u[3] === 0x64; }
+  function currentParsed() { return cs.kind === 'midi' ? cs.midi : cs.kind === 'audio' ? cs.mp3[$('#customSens').value] : null; }
+  function chartFor(parsed, mode, sens, csvText) {
+    chSetMode(mode, sens);
+    var chart = csvText ? parseKeyCsv(csvText, parsed.notes) : generatedLaneMap(parsed.notes);
+    return enforceChartRules(chart);
+  }
+  function updateCount() {
+    var el = $('#customCount'), parsed = currentParsed();
+    if (!cs.file) { el.textContent = 'Choose a file to see how many notes you will get.'; return; }
+    if (!parsed) { el.textContent = cs.busy ? 'Analyzing…' : 'Not ready yet.'; return; }
+    var mode = $('#customMode').value, sens = $('#customSens').value, chart;
+    try { chart = chartFor(parsed, mode, sens, null); } catch (e) { el.textContent = 'Could not build a chart: ' + e.message; return; }
+    var per = (chart.length / Math.max(1, parsed.duration)).toFixed(1);
+    if (cs.kind === 'midi') {
+      var mel = parsed.notes.filter(function (n) { return n.mel; }).length, tot = parsed.notes.filter(function (n) { return !n.drum; }).length;
+      el.textContent = chart.length + ' chart notes from ' + parsed.notes.length + ' MIDI notes (' + per + ' per second). Main melody: ' + mel + ' of ' + tot + ' pitched notes.';
+    } else el.textContent = chart.length + ' chart notes from ' + parsed.notes.length + ' detected beats (' + per + ' per second).';
+  }
+  async function ensureAnalysis(tok) {
+    var sens = $('#customSens').value;
+    if (cs.kind !== 'audio' || cs.mp3[sens]) return;
+    cs.busy = true; updateCount();
+    var parsed = await analyzeAudio(cs.audio, sens);
+    if (tok !== undefined && tok !== cs.token) return;
+    cs.mp3[sens] = parsed; cs.busy = false;
+  }
+  async function prepareFile() {
+    var f = $('#customMidi').files[0], tok = ++cs.token, st$ = $('#customStatus');
+    cs.file = f || null; cs.kind = null; cs.midi = null; cs.audio = null; cs.mp3 = {}; st$.classList.remove('bad');
+    if (!f) { updateCount(); return; }
+    cs.busy = true; updateCount();
+    try {
+      var ab = await f.arrayBuffer();
+      if (tok !== cs.token) return;
+      if (isMidiBytes(ab)) {
+        cs.midi = parseMidi(ab); markMelody(cs.midi); cs.kind = 'midi';
+      } else {
+        mp3Status('Decoding audio…'); await nextFrame();
+        var dec = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, 1, 44100);
+        try { cs.audio = await dec.decodeAudioData(ab); } catch (_) { throw new Error('That is not a MIDI file and the browser could not decode it as audio. MP3, M4A, WAV and OGG usually work.'); }
+        if (cs.audio.duration > 600) throw new Error('Songs over 10 minutes are not supported.');
+        cs.kind = 'audio';
+        await ensureAnalysis(tok);
+      }
+      if (tok !== cs.token) return;
+      st$.textContent = 'Ready: ' + f.name + '. Adjust the settings, then press Load.';
+    } catch (err) {
+      if (tok !== cs.token) return;
+      cs.file = null; cs.kind = null; st$.textContent = 'Could not read file: ' + err.message; st$.classList.add('bad');
+    }
+    cs.busy = false; updateCount();
+    if (cs.autoLoad && cs.kind) { cs.autoLoad = false; $('#customLoad').click(); }
+  }
+  $('#customMidi').addEventListener('change', prepareFile);
+  $('#customMode').addEventListener('change', updateCount);
+  $('#customSens').addEventListener('change', async function () {
+    var tok = cs.token;
+    try { await ensureAnalysis(tok); } catch (err) { $('#customStatus').textContent = err.message; $('#customStatus').classList.add('bad'); }
+    if (tok === cs.token) { cs.busy = false; updateCount(); if (cs.kind === 'audio') $('#customStatus').textContent = 'Ready. Press Load.'; }
+  });
+  $('#customLoad').addEventListener('click', async function () {
+    var status = $('#customStatus'), cf = $('#customCsv').files[0];
+    status.classList.remove('bad');
+    if (!cs.file) { status.textContent = 'Choose a MIDI or audio file first.'; return; }
+    if (cs.busy) { status.textContent = 'Still analyzing — one moment…'; return; }
+    try {
+      var parsed = currentParsed();
+      if (!parsed) { await ensureAnalysis(cs.token); parsed = currentParsed(); }
+      loadCustomSong(null, cs.file.name, cs.kind === 'midi' && cf ? await cf.text() : null, cs.kind === 'audio' ? {parsed: parsed, audioBuffer: cs.audio} : {parsed: parsed});
+    } catch (err) { status.textContent = 'Could not load file: ' + err.message; status.classList.add('bad'); }
   });
   $('#exportMap').addEventListener('click',function(){if(!customChartRows.length)return;var rows=['time_ms,lane,duration_ms,midi_note'];customChartRows.forEach(function(n){rows.push([Math.round(n.t*1000),n.lane,Math.round((n.e||0)*1000),n.m||''].join(','));});downloadText('tetrachord-keymap.csv',rows.join('\n'),'text/csv;charset=utf-8;');});
 
@@ -1523,14 +1630,82 @@ function build(s) {
     })();
     $('#searchImportMidi').addEventListener('click', function () {
       openPage('custom');
+      cs.autoLoad = true;
       var input = $('#customMidi');
       if (input) input.click();
     });
-    $('#customMidi').addEventListener('change', function () {
-      if (!this.files || !this.files.length) return;
-      var loadButton = $('#customLoad');
-      if (loadButton) loadButton.click();
-    });
+    /* ---------- MP3 -> keymap: onset detection per frequency band ---------- */
+    function mp3Status(msg, bad) { var el = $('#customStatus'); el.textContent = msg; el.classList.toggle('bad', !!bad); }
+    function nextFrame() { return new Promise(function (r) { setTimeout(r, 0); }); }
+    async function bandEnvelope(buf, def, hop) {
+      var oc = new OfflineAudioContext(1, buf.length, buf.sampleRate), src = oc.createBufferSource(), node = src, k;
+      src.buffer = buf;
+      for (k = 0; k < def.filters.length; k++) { var f = oc.createBiquadFilter(); f.type = def.filters[k][0]; f.frequency.value = def.filters[k][1]; f.Q.value = def.filters[k][2] || 0.707; node.connect(f); node = f; }
+      node.connect(oc.destination); src.start();
+      var data = (await oc.startRendering()).getChannelData(0), n = Math.floor(data.length / hop), env = new Float32Array(n), win = hop * 2;
+      for (var i = 0; i < n; i++) {
+        var s = 0, a = i * hop, b = Math.min(data.length, a + win);
+        for (var j = a; j < b; j++) s += data[j] * data[j];
+        env[i] = Math.sqrt(s / Math.max(1, b - a));
+      }
+      return env;
+    }
+    function pickOnsets(env, hopSec, spacing, sens) {
+      var n = env.length, i, mx = 1e-9;
+      for (i = 0; i < n; i++) if (env[i] > mx) mx = env[i];
+      var lg = new Float32Array(n);
+      for (i = 0; i < n; i++) lg[i] = Math.log(1 + 80 * env[i] / mx);
+      var o = new Float32Array(n);
+      for (i = 2; i < n - 2; i++) o[i] = Math.max(0, lg[i + 1] - lg[i - 1]) + Math.max(0, lg[i] - lg[i - 2]) * 0.5;
+      var pre = new Float64Array(n + 1);
+      for (i = 0; i < n; i++) pre[i + 1] = pre[i] + o[i];
+      var half = Math.round(0.5 / hopSec), sorted = Array.prototype.slice.call(o).sort(function (a, b) { return a - b; });
+      var floor = sorted[Math.floor(n * 0.75)] * sens.floor, omax = sorted[n - 1] || 1, cands = [];
+      for (i = 3; i < n - 3; i++) {
+        var lo = Math.max(0, i - half), hi = Math.min(n, i + half), mean = (pre[hi] - pre[lo]) / (hi - lo);
+        var v = o[i];
+        if (v < mean * sens.rel + floor) continue;
+        var isPeak = true;
+        for (var q = -3; q <= 3; q++) if (q && o[i + q] > v) { isPeak = false; break; }
+        if (isPeak) cands.push({i: i, s: v});
+      }
+      cands.sort(function (a, b) { return b.s - a.s; });
+      var taken = [], gap = Math.max(2, Math.round(spacing / hopSec)), used = new Uint8Array(n);
+      cands.forEach(function (c) {
+        for (var q = -gap; q <= gap; q++) { var k = c.i + q; if (k >= 0 && k < n && used[k]) return; }
+        used[c.i] = 1; taken.push(c);
+      });
+      taken.sort(function (a, b) { return a.i - b.i; });
+      return taken.map(function (c, idx) {
+        var next = taken[idx + 1] ? taken[idx + 1].i : n, p = env[c.i], j = c.i;
+        while (j < n && j < next - 2 && env[j] >= 0.6 * p && (j - c.i) * hopSec < 4) j++;
+        return {i: c.i, t: (c.i + 1) * hopSec, d: Math.max(0.08, (j - c.i) * hopSec), v: Math.round(45 + 82 * Math.min(1, c.s / (omax * 0.7)))};
+      });
+    }
+    var MP3_SENS = {
+      low:    {rel: 2.4, floor: 2.2, space: 1.2},
+      normal: {rel: 1.5, floor: 1.0, space: 1.0},
+      high:   {rel: 1.05, floor: 0.4, space: 0.8}
+    };
+    var MP3_BANDS = [
+      {name: 'bass',  m: 40, spacing: 0.15, filters: [['lowpass', 170, 0.7], ['lowpass', 170, 0.7]]},
+      {name: 'mids',  m: 64, spacing: 0.11, filters: [['highpass', 220, 0.7], ['lowpass', 2200, 0.7]]},
+      {name: 'highs', m: 86, spacing: 0.09, filters: [['highpass', 3500, 0.7], ['highpass', 3500, 0.7]]}
+    ];
+    async function analyzeAudio(buf, sensName) {
+      var sens = MP3_SENS[sensName] || MP3_SENS.normal, hop = Math.max(64, Math.round(buf.sampleRate * 0.01)), hopSec = hop / buf.sampleRate, notes = [];
+      for (var b = 0; b < MP3_BANDS.length; b++) {
+        mp3Status('Analyzing ' + MP3_BANDS[b].name + '… (' + (b + 1) + '/3)');
+        await nextFrame();
+        var env = await bandEnvelope(buf, MP3_BANDS[b], hop);
+        pickOnsets(env, hopSec, MP3_BANDS[b].spacing * sens.space, sens).forEach(function (h) {
+          notes.push({t: h.t, d: h.d, m: MP3_BANDS[b].m + (h.v > 100 ? 2 : 0), v: h.v});
+        });
+      }
+      notes.sort(function (a, b) { return a.t - b.t; });
+      if (!notes.length) throw new Error('No beats were detected. Try the High sensitivity setting.');
+      return {notes: notes, duration: buf.duration};
+    }
   /* ---------- audio ---------- */
   var ctx = null, master = null, noiseBuf = null;
   function initAudio() {
@@ -1673,6 +1848,11 @@ function build(s) {
       counts: { perfect: 0, great: 0, good: 0, miss: 0 },
       flash: [0, 0, 0, 0], holds: [null, null, null, null], parts: [], pop: null, paused: false, running: true
     };
+    if (song.audioBuffer) {
+      var asrc = ctx.createBufferSource(), ag = ctx.createGain();
+      asrc.buffer = song.audioBuffer; asrc.playbackRate.value = G.musicSpeed; ag.gain.value = 0.85;
+      asrc.connect(ag); ag.connect(master); asrc.start(G.startAt); G.src = asrc;
+    }
     b.notes.forEach(function (n) { G.lanes[n.lane].push({ t: n.t, e: n.e || 0, done: false, missed: false, holding: false }); });
     $('#gTitle').textContent = song.title;
     $('#gKeys').innerHTML = ks.labels.map(function (l) { return '<kbd>' + l + '</kbd>'; }).join('');
