@@ -1833,6 +1833,25 @@ function build(s) {
 
   function gameNow() { return (ctx.currentTime - G.startAt - st.offset / 1000) * G.musicSpeed; }
 
+  var mouseLockX = 0;
+  function lockMouse() {
+    if (canvas.requestPointerLock && document.pointerLockElement !== canvas) {
+      try { var p = canvas.requestPointerLock(); if (p && p.catch) p.catch(function(){}); } catch (_) {}
+    }
+  }
+  document.addEventListener('contextmenu', function(e) {
+    if (G && G.running) e.preventDefault();
+  });
+  document.addEventListener('wheel', function(e) {
+    if (G && G.running) e.preventDefault();
+  }, {passive:false});
+  document.addEventListener('mousemove', function(e) {
+    if (!G || !G.running || document.pointerLockElement !== canvas) return;
+    mouseLockX = Math.max(0, Math.min(canvas.clientWidth, mouseLockX + e.movementX));
+  });
+  document.addEventListener('pointerlockchange', function() {
+    if (G && G.running && document.pointerLockElement !== canvas && !G.paused) pause();
+  });
   function start(i) {
     sel = i;
     var song = SONGS[i], b = BUILT[i];
@@ -1861,6 +1880,8 @@ function build(s) {
     r.setProperty('--accent', song.pal.accent);
     show('game');
     fit();
+    mouseLockX = canvas.clientWidth / 2;
+    lockMouse();
     clearInterval(timer);
     timer = setInterval(pump, 40);
     pump();
@@ -1972,7 +1993,12 @@ function build(s) {
   var ptr = {};
   function laneAt(e) {
     var r = canvas.getBoundingClientRect();
-    var x = (e.clientX - r.left) * (W / r.width);
+    var x;
+    if (document.pointerLockElement === canvas && e.pointerType === 'mouse') {
+      x = mouseLockX * (W / r.width);
+    } else {
+      x = (e.clientX - r.left) * (W / r.width);
+    }
     return Math.max(0, Math.min(3, Math.floor((x - x0) / laneW)));
   }
   canvas.addEventListener('pointerdown', function (e) {
@@ -1988,6 +2014,7 @@ function build(s) {
   /* ---------- pause / quit / finish ---------- */
   function pause() {
     if (!G || !G.running || G.paused) return;
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
     G.paused = true;
     if (ctx) ctx.suspend();
     $('#pause').hidden = false;
@@ -1999,8 +2026,10 @@ function build(s) {
     $('#pause').hidden = true;
     if (ctx) ctx.resume();
     canvas.focus({ preventScroll: true });
+    lockMouse();
   }
   function stopAll() {
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
     if (G) G.running = false;
     clearInterval(timer);
     cancelAnimationFrame(raf);
